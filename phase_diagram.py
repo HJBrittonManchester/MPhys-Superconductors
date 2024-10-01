@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 
 # set up global variables and parameters (parameters will be optimised later)
-tolerance = 0.001
+tolerance = 0.002  # set to ensure fermi momenta constraint gives two points
 resolution = 1000
 
 # lattice constants
@@ -12,8 +12,8 @@ b = 4 * np.pi / (np.sqrt(3) * a)
 
 # tight binding parameters
 alpha_zeeman = 0.0005
-alpha_rashba = alpha_zeeman * 0.01
-beta = 20
+alpha_rashba = alpha_zeeman * 0.15
+beta = 27.
 chemical_potential = -0.75
 
 # hopping parameters
@@ -37,8 +37,11 @@ k_to_m_path[0, :] = np.linspace(k_point[0], m_point[0], resolution)
 k_to_m_path[1, :] = np.linspace(k_point[1], m_point[1], resolution)
 
 
-def magnitude(input):
-    return np.sqrt(input[0]**2 + input[1]**2)
+def magnitude(vector):
+    result = 0.
+    for i in range(len(vector)):
+        result += vector[i]**2
+    return np.sqrt(result)
 
 
 # dispersion relation equation from tight binding model.
@@ -173,4 +176,53 @@ def plot_tight_binding():
     return None
 
 
+# find the fermi momentum for use in optimising parameters using definition:
+fermi_momenta_indices = np.array(
+    np.where(abs(e_vals_positive + e_vals_negative) < tolerance))[0]
+
+# calculate direction of fermi vector from the magnitudes
+fermi_momenta = np.zeros((2, 2))
+fermi_momenta[:, 0] = [0, -k[fermi_momenta_indices[0]]]
+fermi_momenta[:, 1] = [k[fermi_momenta_indices[1]]
+                       * np.sqrt(3)/2, k[fermi_momenta_indices[1]]*1/2]
+
+fermi_momenta[0][1] = k_point[0] - fermi_momenta[0][1]
+fermi_momenta[1][1] = k_point[1] - fermi_momenta[1][1]
+
+# print(k[fermi_momenta_indices])
+
+
 # find the optimal parameters:
+# found analytically from direct subsitution:
+alpha_zeeman_opt = 1e-3 / np.sqrt(3)
+
+# from ratio of soi's:
+soi_ratio = 0.02  # can be tuned to find different results
+
+# find soc terms at the fermi momentum:
+gz_at_fermi_momentum = abs(
+    np.sin(fermi_momenta[1][1]*a) - 2 * np.cos(np.sqrt(3)*fermi_momenta[0][1]*a/2) * np.sin(fermi_momenta[1][1]*a/2))
+gr_at_fermi_momentum = magnitude([-np.sin(fermi_momenta[1][1]*a) - np.cos(np.sqrt(3)*fermi_momenta[0][1]*a/2) * np.sin(fermi_momenta[1][1]*a/2),
+                                  np.sqrt(3)*np.sin(np.sqrt(3)*fermi_momenta[0][1]*a/2)*np.cos(fermi_momenta[1][1]*a/2)])
+
+print(gz_at_fermi_momentum)
+print(gr_at_fermi_momentum)
+
+alpha_rashba_opt = soi_ratio * alpha_zeeman_opt * \
+    (gz_at_fermi_momentum/gr_at_fermi_momentum)
+
+print(alpha_rashba_opt)
+
+
+beta_opt_numerator = 1 + (13e-3/2) / np.sqrt(alpha_rashba_opt**2 *
+                                             gr_at_fermi_momentum**2 + alpha_zeeman_opt**2 * gz_at_fermi_momentum**2)
+beta_opt_denominator = np.tanh(
+    f(k_point[0], k_point[1]) - f(fermi_momenta[0][1], fermi_momenta[1][1]))
+
+beta_opt = beta_opt_numerator / beta_opt_denominator
+
+print(beta_opt)
+
+
+print(f(k_point[0], k_point[1]))
+print(f(fermi_momenta[0][0], fermi_momenta[1][0]))
