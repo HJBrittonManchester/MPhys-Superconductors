@@ -7,7 +7,7 @@ tolerance = 0.002  # set to ensure fermi momenta constraint gives two points
 resolution = 1000
 
 # lattice constants
-a = 3.16  # https://www.researchgate.net/publication/279633132_A_tight-binding_model_for_MoS_2_monolayers
+a = 3.25  # https://www.researchgate.net/publication/279633132_A_tight-binding_model_for_MoS_2_monolayers
 b = 4 * np.pi / (np.sqrt(3) * a)
 
 # tight binding parameters. optimised to fit the required constraints:
@@ -67,8 +67,9 @@ def F(kx, ky, beta):
     global f
     return beta * np.tanh(f(k_point[0], k_point[1]) - f(kx, ky)) - 1
 
-
 # find zeeman/rashba corrections:
+
+
 def g_zeeman(kx, ky, beta):
     global F
     z_term = np.sin(ky*a) - 2 * np.cos(np.sqrt(3)*kx*a/2) * np.sin(ky*a/2)
