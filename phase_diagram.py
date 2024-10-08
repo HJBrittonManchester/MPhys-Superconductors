@@ -83,7 +83,33 @@ def g_rashba(kx, ky, beta):
     return F(kx, ky, beta) * np.array([x_term, y_term, 0])
 
 
+def H_0(kx, ky):
+    hamiltonian = np.zeros((2, 2), dtype=np.complex128)
+
+    # add kinetic term
+
+    hamiltonian[0, 0] += dispersion_relation(kx,
+                                             ky, hopping_parameters) - chemical_potential
+    hamiltonian[1, 1] += dispersion_relation(kx,
+                                             ky, hopping_parameters) - chemical_potential
+
+    # add zeeman
+
+    hamiltonian[0, 0] += alpha_zeeman * g_zeeman(kx, ky, beta)[2]
+    hamiltonian[1, 1] -= alpha_zeeman * g_zeeman(kx, ky, beta)[2]
+
+    # add Rashba
+
+    hamiltonian[0, 1] += alpha_rashba * \
+        (g_rashba(kx, ky, beta)[0] - 1j * g_rashba(kx, ky, beta)[1])
+    hamiltonian[1, 0] += alpha_rashba * \
+        (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1])
+
+    return np.matrix(hamiltonian)
+
 # calculate the regular and spin-split energies along the paths:
+
+
 def find_energies():
     gamma_to_k_point_dispersion = np.zeros(resolution)
     k_to_m_dispersion = np.zeros(resolution)
