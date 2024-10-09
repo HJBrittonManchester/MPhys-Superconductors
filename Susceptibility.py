@@ -15,16 +15,18 @@ MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
 
 k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
-EXTERNAL_FIELD_STRENGTH = 120  # tesla
+EXTERNAL_FIELD_STRENGTH = 0  # tesla
 
 EXTERNAL_FIELD = np.array([EXTERNAL_FIELD_STRENGTH, 0, 0])
 
 Fermi_radius = 0.1771  # A^-1
 
 # simulation params
-FREQUENCY_LIMIT = 10
+FREQUENCY_LIMIT = 40
 
 IntegralRes = [10, 100]
+
+H_0_vec = np.vectorize(H_0, otypes=[np.matrix])
 
 
 a = 3.25  # https://www.researchgate.net/publication/279633132_A_tight-binding_model_for_MoS_2_monolayers
@@ -54,7 +56,7 @@ def matsubara_frequency(T, m):
 
 
 def Susceptibility_at_T(T):
-    N = 20
+    N = 40
     chi_0 = 0
 
     for m in range(-FREQUENCY_LIMIT, FREQUENCY_LIMIT):
@@ -63,12 +65,8 @@ def Susceptibility_at_T(T):
         for i in range(N):
             for j in range(N):
 
-                kx = (i - N//2) / (N//2) * 4*np.pi/3 / a
-                ky = (j - N//2)/(N//2) * 4*np.pi/3 / a
-
-                if kx**2 + ky**2 > (4*np.pi/3 / a)**2:
-
-                    continue
+                kx = i / (N) * 2 * np.pi / a
+                ky = (j - i / np.sqrt(3)) / (N) * 2 * np.pi / a
 
                 GF_plus = Matsubara_Green_Function(frequency, kx, ky)
                 GF_minus = Matsubara_Green_Function(-frequency, -kx, -ky)
@@ -83,53 +81,82 @@ def Susceptibility_at_T(T):
 
 
 def plot_2d(T):
-    N_points = 10
-    ky_range = np.linspace(1.05, 4*np.pi/3 / a, N_points)
-    kx_range = np.linspace(-0.25, 0.25, N_points)
+    N_points = 50
+    ky_range = np.linspace(0, 1, N_points)
+    kx_range = np.linspace(0, 1, N_points)
 
     X, Y = np.meshgrid(kx_range, ky_range)
+
+    KX = X * 2*np.pi / a
+    KY = Y * 2*np.pi / a - X * 2*np.pi / a / np.sqrt(3)
+
     H_0_mesh = np.zeros_like(X)
 
     for i in range(X.shape[0]):
         for j in range(X.shape[1]):
-            if X[i, j]**2 + Y[i, j]**2 > (4*np.pi/3 / a)**2:
-                H_0_mesh[i, j] = -10
+
+            if KX[i, j]**2 + (KY[i, j] - 4 * np.pi / 3 / a)**2 < 0.3**2:
+                pass
+            elif (KX[i, j]-1.15)**2 + (KY[i, j] - .7)**2 < 0.3**2:
+                pass
+            elif (KX[i, j]-1.15)**2 + (KY[i, j] + 0.5)**2 < 0.3**2:
+                pass
+            else:
+                H_0_mesh[i, j] = 0
                 continue
+
             chi_0 = 0
             for m in range(-FREQUENCY_LIMIT, FREQUENCY_LIMIT):
 
                 frequency = matsubara_frequency(T, m)
 
-                GF_plus = Matsubara_Green_Function(frequency, X[i, j], Y[i, j])
+                GF_plus = Matsubara_Green_Function(
+                    frequency, KX[i, j], KY[i, j])
                 GF_minus = Matsubara_Green_Function(
-                    -frequency, -X[i, j], -Y[i, j])
+                    -frequency, -KX[i, j], -KY[i, j])
 
-                chi_0 += np.real((GF_plus[0, 0]*GF_minus[1, 1] - GF_plus[0, 1]
-                                  * GF_minus[0, 1]))
+                chi_0 -= np.real((GF_plus[0, 0]*GF_minus[1, 1] - GF_plus[0, 1]
+                                  * GF_minus[0, 1])) * T * k_B
 
             H_0_mesh[i, j] = chi_0 / N_points**2
 
     #np.linalg.eig(H_0(X[i, j], Y[i, j]))[0][0]
 
-    print(1 - H_0_mesh.sum(where=X**2 + Y**2 <
-          (4*np.pi/3 / a)**2) * 3.727494207555809e-05)
+    print(H_0_mesh.sum())
 
-    #plt.pcolor(X, Y, H_0_mesh, shading="auto")
-    # plt.colorbar()
-    return 1 - H_0_mesh.sum(where=X**2 + Y**2 < (4*np.pi/3 / a)**2) * 3.727494207555809e-05
+    plt.pcolor(KX, KY, H_0_mesh, shading="auto")
+    plt.colorbar()
+    return 1 + H_0_mesh.sum() * 0.0828
+
+
+def test():
+    N_points = 50
+    ky_range = np.linspace(0, 1, N_points)
+    kx_range = np.linspace(0, 1, N_points)
+
+    X, Y = np.meshgrid(kx_range, ky_range)
+
+    KX = X * 2*np.pi / a
+    KY = Y * 2*np.pi / a - X * 2*np.pi / a / np.sqrt(3)
+
+    freq = matsubara_frequency(6.5, 1) * 0
+
+    energies = H_0_vec(KX, KY)
+
+    return (1j * freq * np.identity(2) * np.ones_like(energies)) - energies
 
 
 def plot_crit():
-    critical_values = np.array([[0, 6.5], [10, 6.48], [20, 6.36], [
-        30, 6.15], [40, 5.830000000000004], [50, 5.380000000000003], [80, 3.2], [120, 1.13]])
+    critical_values = np.array([[0, 6.5], [10, 6.44], [20, 6.05], [
+        30, 5.33], [40, 3.96]])
     plt.plot(critical_values[:, 1], critical_values[:, 0])
     plt.xlim((0, 7))
 
 
 def test_sus():
-    v = 3.727494207555809e-05
+    v = -0.0828
     tol = 0.005
-    temp = 1
+    temp = 3.5
     current_gap_value = plot_2d(temp)
     while abs(current_gap_value) > tol:
         if current_gap_value < 0:
