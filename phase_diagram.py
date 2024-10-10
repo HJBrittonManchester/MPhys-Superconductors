@@ -56,7 +56,12 @@ def dispersion_relation(kx, ky, hps):
     return 2*(hps[0]*first_term + hps[1]*second_term + hps[2]*third_term)
 
 
+def epsilon(kx, ky): return dispersion_relation(
+    kx, ky, hopping_parameters) - chemical_potential
+
 # define spin-splitting functions and zeeman/rashba interactions:
+
+
 def f(kx, ky):
     global a
     return abs(np.sin(ky*a) - 2 * np.cos(np.sqrt(3) * kx*a / 2) * np.sin(ky*a / 2))
@@ -73,14 +78,14 @@ def F(kx, ky, beta):
 def g_zeeman(kx, ky, beta):
     global F
     z_term = np.sin(ky*a) - 2 * np.cos(np.sqrt(3)*kx*a/2) * np.sin(ky*a/2)
-    return F(kx, ky, beta) * np.array([0, 0, z_term])
+    return np.array([0, 0, F(kx, ky, beta) * z_term], dtype=object)
 
 
 def g_rashba(kx, ky, beta):
     global F
     x_term = -np.sin(ky*a) - np.cos(np.sqrt(3)*kx*a/2)*np.sin(ky*a/2)
     y_term = np.sqrt(3)*np.sin(np.sqrt(3)*kx*a/2)*np.cos(ky*a/2)
-    return F(kx, ky, beta) * np.array([x_term, y_term, 0])
+    return np.array([F(kx, ky, beta) * x_term, F(kx, ky, beta) * y_term, 0], dtype=object)
 
 
 def H_0(kx, ky):

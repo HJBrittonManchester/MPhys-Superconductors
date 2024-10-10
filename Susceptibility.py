@@ -5,163 +5,171 @@ Created on Thu Oct  3 13:18:35 2024
 @author: hbrit
 """
 import numpy as np
-from phase_diagram import H_0
-
+from phase_diagram import epsilon, g_rashba, g_zeeman, alpha_rashba, alpha_zeeman, beta, a
 import matplotlib.pyplot as plt
-
 import scipy.constants
+import time
 
 MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
 
 k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
-EXTERNAL_FIELD_STRENGTH = 0  # tesla
-
-EXTERNAL_FIELD = np.array([EXTERNAL_FIELD_STRENGTH, 0, 0])
-
-Fermi_radius = 0.1771  # A^-1
+# system parameters
+V = -0.4823435925215936  # attractive potential
 
 # simulation params
-FREQUENCY_LIMIT = 40
-
-IntegralRes = [10, 100]
-
-H_0_vec = np.vectorize(H_0, otypes=[np.matrix])
+FREQUENCY_LIMIT = 1000
 
 
-a = 3.25  # https://www.researchgate.net/publication/279633132_A_tight-binding_model_for_MoS_2_monolayers
-b = 4 * np.pi / (np.sqrt(3) * a)
-
-PAULI = np.array([np.matrix([[0, 1], [1, 0]]), np.matrix(
-    [[0, -1j], [1j, 0]]), np.matrix([[1, 0], [0, -1]])])
-
-
-def H_P(magnetic_field_vector):
-    # Define perturbing Hamiltonian for Zeeman interaction with external Field H
-    # np.einsum implementation allows for any direction of H-field
-    return np.matrix(- MU_B * np.einsum("i,ijk->jk", magnetic_field_vector, PAULI))
+def Det(kx, ky, ohmega, H):
+    return -ohmega**2 + epsilon(kx, ky)**2 - (alpha_zeeman *
+                                              g_zeeman(kx, ky, beta)[2])**2 - 2j * ohmega * epsilon(kx, ky) - \
+        ((MU_B * H + alpha_rashba * g_rashba(kx, ky, beta)[0])**2 +
+         (alpha_rashba*g_rashba(kx, ky, beta)[1])**2)
 
 
-def Matsubara_Green_Function(frequency, kx, ky):
+def GF_up_up(kx, ky, ohmega, H):
+    return 1/Det(kx, ky, ohmega, H) * (1j * ohmega - epsilon(kx, ky) + alpha_zeeman * g_zeeman(kx, ky, beta)[2])
 
-    inverse_greens_function = np.matrix(1j * frequency * np.identity(2) -
-                                        H_0(kx, ky) - H_P(EXTERNAL_FIELD))
-    # print(inverse_greens_function)
 
-    return np.linalg.inv(inverse_greens_function)
+def GF_down_down(kx, ky, ohmega, H):
+    return 1/Det(kx, ky, ohmega, H) * (1j * ohmega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2])
+
+
+def GF_up_down(kx, ky, ohmega, H):
+    return 1/Det(kx, ky, ohmega, H) * (alpha_rashba * (g_rashba(kx, ky, beta)[0] - 1j * g_rashba(kx, ky, beta)[1]) + MU_B * H)
+
+
+def GF_down_up(kx, ky, ohmega, H):
+    return 1/Det(kx, ky, ohmega, H) * (alpha_rashba * (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1]) + MU_B * H)
 
 
 def matsubara_frequency(T, m):
     return (2*m+1)*k_B * T * np.pi
 
 
-def Susceptibility_at_T(T):
-    N = 40
-    chi_0 = 0
+def Susceptibility(T, H, plot=False, N_points=100):
 
+    ky_range = np.linspace(0, .75, 3 * N_points//4)
+    kx_range = np.hstack((np.linspace(0, .25, N_points//4),
+                         np.linspace(.45, .7, N_points//4)))
+
+    X, Y = np.meshgrid(kx_range, ky_range)
+
+    KX = X * 2*np.pi / a
+    KY = Y * 4*np.pi / a / np.sqrt(3) - X * 2*np.pi / a / np.sqrt(3)
+
+    chi_0 = np.zeros((KY.shape[0], KY.shape[1], 2*FREQUENCY_LIMIT),
+                     dtype=np.complex128)
+    freq = np.zeros(2 * FREQUENCY_LIMIT)
     for m in range(-FREQUENCY_LIMIT, FREQUENCY_LIMIT):
-        frequency = matsubara_frequency(T, m)
-        ks = np.array([[0, 4*np.pi/3 / a]])
-        for i in range(N):
-            for j in range(N):
+        freq[m+FREQUENCY_LIMIT] = matsubara_frequency(T, m)
 
-                kx = i / (N) * 2 * np.pi / a
-                ky = (j - i / np.sqrt(3)) / (N) * 2 * np.pi / a
+    chi_0 -= (GF_up_up(KX[:, :, None], KY[:, :, None], freq[None, None, :], H) * GF_down_down(-KX[:, :, None], -KY[:, :, None], -freq[None, None, :],
+              H) - GF_up_down(KX[:, :, None], KY[:, :, None], freq[None, None, :], H) * GF_down_up(-KX[:, :, None], -KY[:, :, None], -freq[None, None, :], H))
 
-                GF_plus = Matsubara_Green_Function(frequency, kx, ky)
-                GF_minus = Matsubara_Green_Function(-frequency, -kx, -ky)
+    if plot:
+        plt.pcolor(KX, KY, np.real(chi_0.sum(axis=2)), shading="auto")
 
-                chi_0 += (GF_plus[0, 0]*GF_minus[1, 1] - GF_plus[0, 1]
-                          * GF_minus[0, 1])
-
-                ks = np.vstack((ks, [kx, ky]))
-
-        #plt.plot(ks[:, 0], ks[:, 1], 'o')
-    return chi_0 * T / N**2 / FREQUENCY_LIMIT / 2
+    return np.real(chi_0.sum() * T * k_B / (N_points**2))
 
 
-def plot_2d(T):
-    N_points = 50
-    ky_range = np.linspace(0, 1, N_points)
-    kx_range = np.linspace(0, 1, N_points)
-
-    X, Y = np.meshgrid(kx_range, ky_range)
-
-    KX = X * 2*np.pi / a
-    KY = Y * 2*np.pi / a - X * 2*np.pi / a / np.sqrt(3)
-
-    H_0_mesh = np.zeros_like(X)
-
-    for i in range(X.shape[0]):
-        for j in range(X.shape[1]):
-
-            if KX[i, j]**2 + (KY[i, j] - 4 * np.pi / 3 / a)**2 < 0.3**2:
-                pass
-            elif (KX[i, j]-1.15)**2 + (KY[i, j] - .7)**2 < 0.3**2:
-                pass
-            elif (KX[i, j]-1.15)**2 + (KY[i, j] + 0.5)**2 < 0.3**2:
-                pass
-            else:
-                H_0_mesh[i, j] = 0
-                continue
-
-            chi_0 = 0
-            for m in range(-FREQUENCY_LIMIT, FREQUENCY_LIMIT):
-
-                frequency = matsubara_frequency(T, m)
-
-                GF_plus = Matsubara_Green_Function(
-                    frequency, KX[i, j], KY[i, j])
-                GF_minus = Matsubara_Green_Function(
-                    -frequency, -KX[i, j], -KY[i, j])
-
-                chi_0 -= np.real((GF_plus[0, 0]*GF_minus[1, 1] - GF_plus[0, 1]
-                                  * GF_minus[0, 1])) * T * k_B
-
-            H_0_mesh[i, j] = chi_0 / N_points**2
-
-    #np.linalg.eig(H_0(X[i, j], Y[i, j]))[0][0]
-
-    print(H_0_mesh.sum())
-
-    plt.pcolor(KX, KY, H_0_mesh, shading="auto")
-    plt.colorbar()
-    return 1 + H_0_mesh.sum() * 0.0828
+def delta(T, H):
+    return 1 - Susceptibility(T, H) * V
 
 
-def test():
-    N_points = 50
-    ky_range = np.linspace(0, 1, N_points)
-    kx_range = np.linspace(0, 1, N_points)
+def braket(start_T_U, start_T_L, H, tol=0.001):
+    # Larger T => +ve Delta
+    # Smaller T => -ve Delta
+    MAX_ITERATIONS = 10
+    iterations = 0
 
-    X, Y = np.meshgrid(kx_range, ky_range)
+    current_T_U = start_T_U
+    current_T_L = start_T_L
 
-    KX = X * 2*np.pi / a
-    KY = Y * 2*np.pi / a - X * 2*np.pi / a / np.sqrt(3)
+    current_delta_U = delta(current_T_U, H)
+    current_delta_L = delta(current_T_L, H)
+    # print("Δ_max = {}, Δ_min = {}".format(
+    #    current_delta_U, current_delta_L))
 
-    freq = matsubara_frequency(6.5, 1) * 0
+    while abs(current_delta_L) > tol and abs(current_delta_U) > tol and iterations < MAX_ITERATIONS:
+        # print("Δ_max = {}, Δ_min = {}".format(
+        #    current_delta_U, current_delta_L))
+        if abs(current_delta_L) > abs(current_delta_U):
+            current_T_L = (current_T_L + current_T_U) / 2
+            current_delta_L = delta(current_T_L, H)
 
-    energies = H_0_vec(KX, KY)
+        else:
+            current_T_U = (current_T_L + current_T_U) / 2
+            current_delta_U = delta(current_T_U, H)
+        iterations += 1
 
-    return (1j * freq * np.identity(2) * np.ones_like(energies)) - energies
+    if abs(current_delta_L) < tol:
+        # print(current_delta_L)
+        return current_T_L
+    else:
+        # print(current_delta_U)
+        return current_T_U
 
 
-def plot_crit():
-    critical_values = np.array([[0, 6.5], [10, 6.44], [20, 6.05], [
-        30, 5.33], [40, 3.96]])
-    plt.plot(critical_values[:, 1], critical_values[:, 0])
+def plot_critical_field():
+    critical = np.array(
+        [[0.0, 6.496874999999999],
+         [3.25, 6.496874999999999],
+            [6.5, 6.3953613281249995],
+            [9.75, 6.345397567749023],
+            [13.0, 6.246250730752944],
+            [16.25, 6.051055395416915],
+            [19.5, 5.9092337845868315],
+            [22.75, 5.724570228818493],
+            [26.0, 5.456230999342626],
+            [29.25, 5.2004701712484405],
+            [32.5, 4.875440785545413],
+            [35.75, 4.570725736448825],
+            [39.0, 4.213637788288761],
+            [42.25, 3.884447336078701],
+            [45.5, 3.459585908695093],
+            [48.75, 3.0271376701082064],
+            [52.0, 2.6487454613446806],
+            [55.25, 2.152105687342553],
+            [58.5, 1.647705916871642],
+            [61.75, 0.9783253881425373], ])
+
+    plt.plot(critical[:, 1], critical[:, 0])
+    plt.ylabel(r"$H_{c2}$ (T)")
+    plt.xlabel(r"$T_c$ (K)")
     plt.xlim((0, 7))
 
 
-def test_sus():
-    v = -0.0828
-    tol = 0.005
-    temp = 3.5
-    current_gap_value = plot_2d(temp)
-    while abs(current_gap_value) > tol:
-        if current_gap_value < 0:
-            temp += 0.01
-        else:
-            temp -= 0.01
-        current_gap_value = plot_2d(temp)
-    print(temp)
+def test_freq_convergence(start, stop, points=10):
+    global FREQUENCY_LIMIT
+    L = []
+    chi = []
+    for i in range(points+1):
+        FREQUENCY_LIMIT = int(i * (stop - start) / (points) + start)
+        chi.append(Susceptibility(6.5, 0))
+        L.append(FREQUENCY_LIMIT * 2)
+
+        print("χ = {} at {} matsubara frequencies".format(chi[-1], L[-1]))
+
+    plt.plot(L, chi)
+    plt.xlabel("Number of matsubara frequencies used")
+    plt.ylabel(r"$\chi^0$")
+
+
+time_0 = time.time()
+#print(braket(.7, 1.35, 70))
+# print(delta(6.5, 0))
+
+'''
+temp = 6.6
+for H_index in range(20):
+    H = 65 * H_index / 20
+    temp = braket(temp, 0, H)
+    print("[{}, {}],".format(H, temp))
+'''
+print(Susceptibility(6.5, 0))
+# plot_critical_field()
+#test_freq_convergence(500, 2000, 5)
+
+print("Runtime: {} s".format(time.time() - time_0))
