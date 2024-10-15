@@ -10,15 +10,17 @@ import matplotlib.pyplot as plt
 import scipy.constants
 import time
 
+
 MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
 
 k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system parameters
-V = -0.4823435925215936  # attractive potential
-
+# FOR 1000 freq and 100 N -> -0.34864337758262043  # attractive potential
+V = -0.3578945281365615
+V_for3 = -0.3213018026628682
 # simulation params
-FREQUENCY_LIMIT = 1000
+FREQUENCY_LIMIT = 2000
 
 
 def Det(kx, ky, ohmega, H):
@@ -48,37 +50,69 @@ def matsubara_frequency(T, m):
     return (2*m+1)*k_B * T * np.pi
 
 
-def Susceptibility(T, H, plot=False, N_points=100):
+def Susceptibility(T, H, plot=False, N_points=150, useBoundingBoxes=False):
+    chi_total = 0
+    bounding_boxes = np.array(
+        [[[0, .25], [.3, .9]], [[.3, .9], [.3, .9]], [[.3, .9], [0, .25]]])
 
-    ky_range = np.linspace(0, .75, 3 * N_points//4)
-    kx_range = np.hstack((np.linspace(0, .25, N_points//4),
-                         np.linspace(.45, .7, N_points//4)))
+    if plot and useBoundingBoxes:
+        fig, axs = plt.subplots(1, 3, figsize=(15, 15))
 
-    X, Y = np.meshgrid(kx_range, ky_range)
+    for i in range(3 if useBoundingBoxes else 1):
+        # create top left range
 
-    KX = X * 2*np.pi / a
-    KY = Y * 4*np.pi / a / np.sqrt(3) - X * 2*np.pi / a / np.sqrt(3)
+        if useBoundingBoxes:
+            box = bounding_boxes[i]
+        else:
+            box = np.array([[0, 1], [0, 1]])
 
-    chi_0 = np.zeros((KY.shape[0], KY.shape[1], 2*FREQUENCY_LIMIT),
-                     dtype=np.complex128)
-    freq = np.zeros(2 * FREQUENCY_LIMIT)
-    for m in range(-FREQUENCY_LIMIT, FREQUENCY_LIMIT):
-        freq[m+FREQUENCY_LIMIT] = matsubara_frequency(T, m)
+        ky_range = np.linspace(box[1, 0], box[1, 1], int(
+            N_points * (box[1, 1] - box[1, 0])))
+        kx_range = np.linspace(box[0, 0], box[0, 1], int(
+            N_points * (box[0, 1] - box[0, 0])))
 
-    chi_0 -= (GF_up_up(KX[:, :, None], KY[:, :, None], freq[None, None, :], H) * GF_down_down(-KX[:, :, None], -KY[:, :, None], -freq[None, None, :],
-              H) - GF_up_down(KX[:, :, None], KY[:, :, None], freq[None, None, :], H) * GF_down_up(-KX[:, :, None], -KY[:, :, None], -freq[None, None, :], H))
+        X, Y = np.meshgrid(kx_range, ky_range)
 
-    if plot:
-        plt.pcolor(KX, KY, np.real(chi_0.sum(axis=2)), shading="auto")
+        KX = X * 2*np.pi / a
+        KY = Y * 4*np.pi / a / np.sqrt(3) - X * 2*np.pi / a / np.sqrt(3)
 
-    return np.real(chi_0.sum() * T * k_B / (N_points**2))
+        chi_0 = np.zeros((KY.shape[0], KY.shape[1]),
+                         dtype=np.complex128)
+
+        block_size = FREQUENCY_LIMIT // 10
+        for block_step in range(10):
+            # print("block {}".format(block_step))
+            freq_block = np.zeros(2 * block_size)
+            for m in range(0, block_size):
+                freq_block[2 *
+                           m] = matsubara_frequency(T, m + block_step * block_size)
+                if m == 0:
+                    pass
+                freq_block[2*m +
+                           1] = matsubara_frequency(T, -(m + block_step * block_size))
+
+            chi_0 -= (GF_up_up(KX[:, :, None], KY[:, :, None], freq_block[None, None, :], H) * GF_down_down(-KX[:, :, None], -KY[:, :, None], -freq_block[None, None, :],
+                                                                                                            H) - GF_up_down(KX[:, :, None], KY[:, :, None], freq_block[None, None, :], H) * GF_down_up(-KX[:, :, None], -KY[:, :, None], -freq_block[None, None, :], H)).sum(axis=2)
+
+        chi_total += chi_0.sum()
+        if plot:
+            if useBoundingBoxes:
+                axs[i].pcolor(KX, KY, np.real(chi_0),
+                              shading="auto", vmin=-(N_points**2), vmax=0)
+            else:
+                plt.pcolor(KX, KY, np.real(chi_0),
+                           shading="auto", vmin=-(N_points**2), vmax=0)
+
+            # axs[i].set_aspect('equal')
+
+    return np.real(chi_total * T * k_B / (N_points**2))
 
 
 def delta(T, H):
     return 1 - Susceptibility(T, H) * V
 
 
-def braket(start_T_U, start_T_L, H, tol=0.001):
+def braket(start_T_U, start_T_L, H, tol=0.0001):
     # Larger T => +ve Delta
     # Smaller T => -ve Delta
     MAX_ITERATIONS = 10
@@ -113,7 +147,7 @@ def braket(start_T_U, start_T_L, H, tol=0.001):
 
 
 def plot_critical_field():
-    critical = np.array(
+    critical_old_for_lab_book = np.array(
         [[0.0, 6.496874999999999],
          [3.25, 6.496874999999999],
             [6.5, 6.3953613281249995],
@@ -135,10 +169,45 @@ def plot_critical_field():
             [58.5, 1.647705916871642],
             [61.75, 0.9783253881425373], ])
 
-    plt.plot(critical[:, 1], critical[:, 0])
-    plt.ylabel(r"$H_{c2}$ (T)")
-    plt.xlabel(r"$T_c$ (K)")
-    plt.xlim((0, 7))
+    critical = np.array([[0.0, 6.5],
+                         [8.333333333333334, 6.37109375],
+                         [16.666666666666668, 6.0283203125],
+                         [25.0, 5.523221015930176],
+                         [33.333333333333336, 4.892415761947632],
+                         [41.666666666666664, 4.2371028158813715],
+                         [50.0, 3.542377527355711],
+                         [51.666666666666664, 3.40234375],
+                         [53.333333333333336, 3.2615814208984375],
+                         [55.0, 3.1290668845176697],
+                         [56.666666666666664, 2.9960002042353153],
+                         [58.333333333333336, 2.863453315672814],
+                         [58.333333333333336, 2.8670584966518504],
+                         [60.0, 2.739708368928916],
+                         [61.666666666666664, 2.6241808600547305],
+                         [63.333333333333336, 2.509980643332132],
+                         [65.0, 2.4038101293478418],
+                         [65.0, 2.400390625],
+
+                         [66.66666666666667, 2.2981891109532397],
+                         [66.66666666666667, 2.2970527648925785],
+                         [68.33333333333333, 2.19835703521967],
+                         [70.0, 2.099996549193748],
+                         [71.66666666666667, 2.0023404676901473],
+                         [73.33333333333333, 1.9094527495412146],
+                         [75.0, 1.8175664771035749],
+                         [76.66666666666667, 1.7404101705149375],
+                         [78.33333333333333, 1.6731277221149106],
+                         [80.0, 1.6055323903052856],
+                         ])
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.plot(critical[:, 1], critical[:, 0])
+    ax.set_ylabel(r"$H_{c2}$ (T)")
+    ax.set_xlabel(r"$T_c$ (K)")
+    ax.set_xlim((0, 7))
+    ax.set_ylim((0, 85))
+
+    ax.set_aspect("auto")
 
 
 def test_freq_convergence(start, stop, points=10):
@@ -158,18 +227,19 @@ def test_freq_convergence(start, stop, points=10):
 
 
 time_0 = time.time()
-#print(braket(.7, 1.35, 70))
+# print(braket(.7, 1.35, 70))
 # print(delta(6.5, 0))
 
-'''
+lower_bound_estimate = [6, 4, 2, 0.1]
+
 temp = 6.6
-for H_index in range(20):
-    H = 65 * H_index / 20
-    temp = braket(temp, 0, H)
+for H_index in range(15):
+    H = 75 * H_index / 14
+    temp = braket(temp, 0.1, H)
     print("[{}, {}],".format(H, temp))
-'''
-print(Susceptibility(6.5, 0))
+
+#print(Susceptibility(6.5, 0, False, 100))
 # plot_critical_field()
-#test_freq_convergence(500, 2000, 5)
+# test_freq_convergence(500, 2000, 5)
 
 print("Runtime: {} s".format(time.time() - time_0))

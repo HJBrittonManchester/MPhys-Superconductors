@@ -13,7 +13,8 @@ b = 4 * np.pi / (np.sqrt(3) * a)
 # tight binding parameters. optimised to fit the required constraints:
 alpha_zeeman = 5.77350269e-04
 alpha_rashba = alpha_zeeman * 9.03566289e-05
-beta = 2.75681159e+01
+beta = 2.75681159e+01  # 1.0073e1
+#
 chemical_potential = -0.75
 
 # hopping parameters
