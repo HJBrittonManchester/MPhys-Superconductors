@@ -24,34 +24,40 @@ V_for3 = -0.3213018026628682
 FREQUENCY_LIMIT = 1000
 
 
-def Det(kx, ky, ohmega, H):
-    return -ohmega**2 + epsilon(kx, ky)**2 - (alpha_zeeman *
-                                              g_zeeman(kx, ky, beta)[2])**2 - 2j * ohmega * epsilon(kx, ky) - \
-        ((MU_B * H + alpha_rashba * g_rashba(kx, ky, beta)[0])**2 +
-         (alpha_rashba*g_rashba(kx, ky, beta)[1])**2)
+def H(H_mag, theta, phi):
+    # spherical coordinates - theta is angle from z axis, phi is azimuthal angle
+    return H_mag * np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
 
 
-def GF_up_up(kx, ky, ohmega, H):
-    return 1/Det(kx, ky, ohmega, H) * (1j * ohmega - epsilon(kx, ky) + alpha_zeeman * g_zeeman(kx, ky, beta)[2])
+def Det(kx, ky, omega, H_mag, theta, phi):
+    return -omega**2 + epsilon(kx, ky)**2 - (MU_B * H(H_mag, theta, phi)[2])**2 - (alpha_zeeman * g_zeeman(kx, ky, beta)[2])**2 - \
+        2j * omega * epsilon(kx, ky) - 2 * alpha_zeeman * g_zeeman(kx, ky, beta)[2] * MU_B * H(H_mag, theta, phi)[2] - \
+        (alpha_rashba * g_rashba(kx, ky, beta)[0] + MU_B * H(H_mag, theta, phi)[0])**2 - (
+            alpha_rashba * g_rashba(kx, ky, beta)[1] + MU_B * H(H_mag, theta, phi)[1])**2
 
 
-def GF_down_down(kx, ky, ohmega, H):
-    return 1/Det(kx, ky, ohmega, H) * (1j * ohmega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2])
+def GF_up_up(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (1j * omega - epsilon(kx, ky) + alpha_zeeman * g_zeeman(kx, ky, beta)[2] + MU_B * H(H_mag, theta, phi)[2])
 
 
-def GF_up_down(kx, ky, ohmega, H):
-    return 1/Det(kx, ky, ohmega, H) * (alpha_rashba * (g_rashba(kx, ky, beta)[0] - 1j * g_rashba(kx, ky, beta)[1]) + MU_B * H)
+def GF_down_down(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (1j * omega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2] - MU_B * H(H_mag, theta, phi)[2])
 
 
-def GF_down_up(kx, ky, ohmega, H):
-    return 1/Det(kx, ky, ohmega, H) * (alpha_rashba * (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1]) + MU_B * H)
+def GF_up_down(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (alpha_rashba * (g_rashba(kx, ky, beta)[0] - 1j * g_rashba(kx, ky, beta)[1]) + (MU_B * (H(H_mag, theta, phi)[0] - 1j * H(H_mag, theta, phi)[1])))
+
+
+def GF_down_up(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (alpha_rashba * (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1]) + (MU_B * (H(H_mag, theta, phi)[0] + 1j * H(H_mag, theta, phi)[1])))
 
 
 def matsubara_frequency(T, m):
     return (2*m+1)*k_B * T * np.pi
 
 
-def Susceptibility(T, H, plot=False, N_points=120, useBoundingBoxes=False):
+
+def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=100, useBoundingBoxes=False):
     chi_total = 0
     bounding_boxes = np.array(
         [[[0, .25], [.3, .9]], [[.3, .9], [.3, .9]], [[.3, .9], [0, .25]]])
@@ -92,8 +98,10 @@ def Susceptibility(T, H, plot=False, N_points=120, useBoundingBoxes=False):
                 freq_block[2*m +
                            1] = matsubara_frequency(T, -(m + block_step * block_size))
 
-            chi_0 -= (GF_up_up(KX[:, :, None], KY[:, :, None], freq_block[None, None, :], H) * GF_down_down(-KX[:, :, None], -KY[:, :, None], -freq_block[None, None, :],
-                                                                                                            H) - GF_up_down(KX[:, :, None], KY[:, :, None], freq_block[None, None, :], H) * GF_down_up(-KX[:, :, None], -KY[:, :, None], -freq_block[None, None, :], H)).sum(axis=2)
+            chi_0 -= (GF_up_up(KX[:, :, None], KY[:, :, None], freq_block[None, None, :], H_mag, theta, phi) *
+                      GF_down_down(-KX[:, :, None], -KY[:, :, None], -freq_block[None, None, :], H_mag, theta, phi) -
+                      GF_up_down(KX[:, :, None], KY[:, :, None], freq_block[None, None, :], H_mag, theta, phi) *
+                      GF_down_up(-KX[:, :, None], -KY[:, :, None], -freq_block[None, None, :], H_mag, theta, phi)).sum(axis=2)
 
         chi_total += chi_0.sum()
         if plot:
@@ -109,21 +117,25 @@ def Susceptibility(T, H, plot=False, N_points=120, useBoundingBoxes=False):
     return np.real(chi_total * T * k_B / (N_points**2))
 
 
-def delta(T, H):
-    return 1 - Susceptibility(T, H) * V
+def delta(T, H_mag, theta=np.pi/2, phi=0.):
+    return 1 - Susceptibility(T, H_mag, theta, phi) * V
 
 
-def braket(start_H_U, start_H_L, T, tol=0.0001):
-    # Larger T => +ve Delta
-    # Smaller T => -ve Delta
+
+def braket(start_H_U, start_H_L, T, theta=np.pi/2, phi=0., tol=0.0001):
+
+    # Larger H => +ve Delta
+    # Smaller H => -ve Delta
     MAX_ITERATIONS = 10
     iterations = 0
 
     current_H_U = start_H_U
     current_H_L = start_H_L
 
-    current_delta_U = delta(T, current_H_U)
-    current_delta_L = delta(T, current_H_L)
+
+    current_delta_U = delta(T, current_H_U, theta, phi)
+    current_delta_L = delta(T, current_H_L, theta, phi)
+
     # print("Δ_max = {}, Δ_min = {}".format(
     #    current_delta_U, current_delta_L))
     
@@ -139,12 +151,14 @@ def braket(start_H_U, start_H_L, T, tol=0.0001):
         # print("Δ_max = {}, Δ_min = {}".format(
         #     current_delta_U, current_delta_L))
         if abs(current_delta_L) > abs(current_delta_U):
+
             current_H_L = (3*current_H_L + current_H_U) / 4
-            current_delta_L = delta(T, current_H_L)
+            current_delta_L = delta(T, current_H_L, theta, phi)
 
         else:
             current_H_U = (current_H_L + 3*current_H_U) / 4
-            current_delta_U = delta(T, current_H_U)
+            current_delta_U = delta(T, current_H_U, theta, phi)
+
         iterations += 1
 
     if abs(current_delta_L) < tol:
@@ -278,6 +292,7 @@ def test_freq_convergence(start, stop, points=10):
     plt.ylabel(r"$\chi^0$")
 
 
+
 def find_V():
     return 1/ Susceptibility(6.5, 0)
 
@@ -307,3 +322,4 @@ find_phase_diagram(10)
 #test_freq_convergence(500, 2000, 5)
 
 print("Runtime: {} s".format(time.time() - time_0))
+
