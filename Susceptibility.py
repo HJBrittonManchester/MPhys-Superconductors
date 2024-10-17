@@ -7,6 +7,8 @@ Created on Thu Oct  3 13:18:35 2024
 import numpy as np
 from phase_diagram import epsilon, g_rashba, g_zeeman, alpha_rashba, alpha_zeeman, beta, a
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+
 import scipy.constants
 import time
 
@@ -23,7 +25,7 @@ V_for3 = -0.3213018026628682
 # simulation params
 FREQUENCY_LIMIT = 1000
 
-
+'''
 def H(H_mag, theta, phi):
     # spherical coordinates - theta is angle from z axis, phi is azimuthal angle
     return H_mag * np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
@@ -50,35 +52,81 @@ def GF_up_down(kx, ky, omega, H_mag, theta, phi):
 
 def GF_down_up(kx, ky, omega, H_mag, theta, phi):
     return 1/Det(kx, ky, omega, H_mag, theta, phi) * (alpha_rashba * (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1]) + (MU_B * (H(H_mag, theta, phi)[0] + 1j * H(H_mag, theta, phi)[1])))
+'''
+
+
+def Det(kx, ky, omega, H):
+    return (1j * omega - epsilon(kx, ky))**2 - (alpha_zeeman *
+                                              g_zeeman(kx, ky, beta)[2])**2 - \
+        ((MU_B * H + alpha_rashba * g_rashba(kx, ky, beta)[0])**2 +
+         (alpha_rashba*g_rashba(kx, ky, beta)[1])**2)
+
+
+def GF_up_up(kx, ky, omega, H):
+    return 1/Det(kx, ky, omega, H) * (1j * omega - epsilon(kx, ky) + alpha_zeeman * g_zeeman(kx, ky, beta)[2])
+
+
+def GF_down_down(kx, ky, omega, H):
+    return 1/Det(kx, ky, omega, H) * (1j * omega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2])
+
+
+def GF_up_down(kx, ky, omega, H):
+    return 1/Det(kx, ky, omega, H) * (alpha_rashba * (g_rashba(kx, ky, beta)[0] - 1j * g_rashba(kx, ky, beta)[1]) + MU_B * H)
+
+
+def GF_down_up(kx, ky, omega, H):
+    return 1/Det(kx, ky, omega, H) * (alpha_rashba * (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1]) + MU_B * H)
 
 
 def matsubara_frequency(T, m):
     return (2*m+1)*k_B * T * np.pi
 
 
-def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=100, threshold=2):
-    b2_range = np.linspace(0, 1, N_points)
+def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=200, threshold=2):
+    b2_range = np.linspace(0, 1, N_points) 
     b1_range = np.linspace(0, 1, N_points)
 
     B1, B2 = np.meshgrid(b1_range, b2_range)
 
-    KX = B1 * 4 / np.sqrt(3) * np.pi / a + np.pi/a * B2
-    KY = B2 * np.pi / a * 2
+    # 
+    KX = B1 * np.pi / a * 2
+    KY = B2 * 4 / np.sqrt(3) * np.pi / a - 2 * np.pi/a /np.sqrt(3) * B1
 
     # select region near fermi level
-    if threshold != -1:
-        Z = np.where(np.abs(epsilon(KX, KY)) < threshold, [KX, KY], 0)
-    else:
-        Z = np.where(np.isreal(KX), [KX, KY], 0)
-    Valid_k_points = Z[:, ~(Z == 0).all(0)]
+    Z_valid = np.where(np.abs(epsilon(KX, KY)) < threshold, [KX, KY], 0)
+    Z_invalid = np.where(np.abs(epsilon(KX, KY)) >= threshold, [KX, KY], 0)
+    # Z_invalid is the points which don't pass the threshold but this is used 
+    # for plotting
+        
+    Valid_k_points = Z_valid[:, ~(Z_valid == 0).all(0)]
+    Invalid_k_points = Z_invalid[:, ~(Z_invalid == 0).all(0)]
+    
+    #print(Valid_k_points.shape)
 
     valid_kx, valid_ky = Valid_k_points
+    invalid_kx, invalid_ky = Invalid_k_points
 
+    # to plot energy
     if plot:
-        plt.pcolor(KX, KY, epsilon(KX, KY), shading='auto')
-        plt.scatter(valid_kx, valid_ky, color="k")
+        # define your scale, with white at zero
+        norm = colors.CenteredNorm()
+        #colors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+        
+        c = plt.pcolormesh(KX, KY, epsilon(KX, KY), shading='auto', cmap='RdYlBu', norm=norm)  
+        cbar = plt.colorbar(c)
+        cbar.set_label("Energy")
+        #plt.scatter(invalid_kx, invalid_ky, color="k", label = "excluded k-points")
+        plt.ylabel(r"$k_y$")
+        plt.xlabel(r"$k_x$")
+        plt.plot(1/3 * (4 / np.sqrt(3) * np.pi / a + 2 / np.sqrt(3) * np.pi/a) , 1/3 * np.pi / a * 2  , 'xk')
+        plt.text(1/3 * (4 / np.sqrt(3) * np.pi / a + 2 / np.sqrt(3) * np.pi/a)  +.04, 1/3 * np.pi / a * 2 + .04, r"$K^{\prime}$")
+        
+        plt.plot(0, 4/3 * np.pi / a  ,'xk' )
+        plt.text(.04,  4/3 * np.pi / a + .04, r"$K$")
 
-    GF_part = 0
+    #print(valid_kx.shape)
+
+    GF_part = np.zeros_like(valid_kx)
     block_size = FREQUENCY_LIMIT // 10
     for block_step in range(10):
         # print("block {}".format(block_step))
@@ -86,16 +134,22 @@ def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=100, thr
         for m in range(0, block_size):
             freq_block[2 *
                        m] = matsubara_frequency(T, m + block_step * block_size)
-
+            if m == 0:
+                pass
+            
             freq_block[2*m +
-                       1] = matsubara_frequency(T, -(m + block_step * block_size))
+                   1] = matsubara_frequency(T, -(m + block_step * block_size))
+        GF_part -= np.real((GF_up_up(valid_kx[:,None], valid_ky[:,None], freq_block[None, :], H_mag) * GF_down_down(-valid_kx[:,None], -valid_ky[:,None], -freq_block[None, :],
+                                                                                                            H_mag) - GF_up_down(valid_kx[:,None], valid_ky[:,None], freq_block[None,  :], H_mag) * GF_down_up(-valid_kx[:,None], -valid_ky[:,None], -freq_block[None, :], H_mag)).sum(axis=1))
 
-        GF_part -= (GF_down_down(valid_kx[:, None], valid_ky[:, None], freq_block[None, :], H_mag, theta, phi) *
-                    GF_up_up(-valid_kx[:, None], -valid_ky[:, None], -freq_block[None, :], H_mag, theta, phi) -
-                    GF_down_up(valid_kx[:, None], valid_ky[:, None], freq_block[None, :], H_mag, theta, phi) *
-                    GF_up_down(-valid_kx[:, None], -valid_ky[:, None], -freq_block[None, :], H_mag, theta, phi)).sum()
+    chi_0 = GF_part.sum() * T * k_B / (N_points**2)
+    
 
-    chi_0 = np.real(T * k_B * GF_part / (N_points**2))
+
+    
+    # to plot susc
+    #plt.tripcolor(valid_kx, valid_ky, GF_part)
+    
     return chi_0
 
 
@@ -107,7 +161,7 @@ def braket(start_H_U, start_H_L, T, theta=np.pi/2, phi=0., tol=0.0001):
 
     # Larger H => +ve Delta
     # Smaller H => -ve Delta
-    MAX_ITERATIONS = 10
+    MAX_ITERATIONS = 20
     iterations = 0
 
     current_H_U = start_H_U
@@ -125,20 +179,55 @@ def braket(start_H_U, start_H_L, T, theta=np.pi/2, phi=0., tol=0.0001):
     elif current_delta_L > 0:
         print("Lower H too high")
         return 0
+    
+    old_H_U = 100
+    old_H_L = 0
 
     while abs(current_delta_L) > tol and abs(current_delta_U) > tol and iterations < MAX_ITERATIONS:
-        # print("Δ_max = {}, Δ_min = {}".format(
-        #     current_delta_U, current_delta_L))
-        if abs(current_delta_L) > abs(current_delta_U):
-
-            current_H_L = (3*current_H_L + current_H_U) / 4
+        #print("Δ_max = {}, Δ_min = {}".format(
+        #    current_delta_U, current_delta_L))
+        
+        if current_delta_L  > 0 and current_delta_U > 0:
+            print("both +ve sign")
+            
+            current_H_U = current_H_L
+            current_H_L = old_H_L
+            
+            # reset upper
+            current_delta_U = current_delta_L
+            # recalculate lower
             current_delta_L = delta(T, current_H_L, theta, phi)
 
-        else:
-            current_H_U = (current_H_L + 3*current_H_U) / 4
+            
+        elif current_delta_L  < 0 and current_delta_U < 0:
+            print("both -ve sign")
+            
+            current_H_L = current_H_U
+            current_H_U = old_H_U
+            
+            # reset lower
+            current_delta_L = current_delta_U
+            # recalculate Upper
             current_delta_U = delta(T, current_H_U, theta, phi)
+            
+        
+        elif abs(current_delta_L) > abs(current_delta_U):
+            old_H_L = current_H_L
+            current_H_L = (current_H_L +  current_H_U) / 2
+            current_delta_L = delta(T, current_H_L, theta, phi)
+            
+
+        else:
+            old_H_U = current_H_U
+            current_H_U = (current_H_L + current_H_U) / 2
+            current_delta_U = delta(T, current_H_U, theta, phi)
+            
+        
 
         iterations += 1
+        
+    if iterations == MAX_ITERATIONS:
+        print("Reached max iterations")
 
     if abs(current_delta_L) < tol:
         # print(current_delta_L)
@@ -240,12 +329,32 @@ def plot_critical_field():
                                 [54.70678554109935, 3.25],
                                 [62.55796839113147, 2.6],
                                 [73.04718026339746, 1.9500000000000002], ])
+    
+    crit_100_new_new = np.array([[0, 6.5],
+    [25.845243644714348, 5.8500000000000005],
+    [35.59437083898155, 5.2],
+    [43.24682465153819, 4.55],
+    [49.42421926044948, 3.9],
+    [53.861323807441295, 3.25],
+    [56.91373549186723, 2.6],
+    [58.132149591504, 1.9500000000000002],
+    [69.63749999999999, 0.6499999999999999],])
+    
+    crit_manual = np.array([[0,6.5],
+                            [21.685, 6],
+                            [30.75,5.5],
+                            [37.7,5],
+                            [43.4, 4.5],
+                            [48.08,4]])
 
     fig, ax = plt.subplots(figsize=(8, 8))
-    ax.plot(crit_N_150_F_1000[:, 1], crit_N_150_F_1000[:, 0])
-    ax.plot(crit_N_100_F_1000[:, 1],
-            crit_N_100_F_1000[:, 0], 'r', label="N = 100")
-    ax.plot(crit_new_method[:, 1], crit_new_method[:, 0], 'g', label="N = 100")
+    #ax.plot(crit_N_150_F_1000[:, 1], crit_N_150_F_1000[:, 0])
+    #ax.plot(crit_N_100_F_1000[:, 1],
+    #        crit_N_100_F_1000[:, 0], 'r', label="N = 100")
+    #ax.plot(crit_new_method[:, 1], crit_new_method[:, 0], 'g', label="N = 100")
+    ax.plot(crit_100_new_new[:, 1], crit_100_new_new[:, 0], 'g', label="N = 100")
+    ax.plot(crit_manual[:, 1], crit_manual[:, 0], 'r', label="N = 100")
+
 
     ax.set_ylabel(r"$H_{c2}$ (T)")
     ax.set_xlabel(r"$T_c$ (K)")
@@ -276,28 +385,32 @@ def find_V():
 
 
 def find_phase_diagram(steps=15):
-    H = 0
+    values = []
+    H = 5
     for T_index in range(steps):
         T = 6.5 * (1-(T_index) / steps)
         H_upper_estimate = -11 * T + 100
 
-        H = braket(H_upper_estimate, H,  T)
+        H = braket(H_upper_estimate, H - 5,  T)
+        values.append([H, T])
         print("[{}, {}],".format(H, T))
-
+    return np.array(values)
 
 time_0 = time.time()
 # print(braket(.7, 1.35, 70))
 # print(delta(6.5, 0))
 
-V = find_V()
+#V = find_V()
 
 
-print(V)
-find_phase_diagram(10)
+#print(V)
+#r = find_phase_diagram(10)
+
+#plt.plot(r[:,1],r[:,0])
 
 
-#print(Susceptibility(6.5, 0, plot=True, N_points=400, threshold=1))
-# plot_critical_field()
+print(Susceptibility(6.5, 0, plot=True, N_points=500, threshold=2))
+#plot_critical_field()
 #test_freq_convergence(500, 2000, 5, 200)
 
 print("Runtime: {} s".format(time.time() - time_0))
