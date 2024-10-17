@@ -18,7 +18,7 @@ k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 # system parameters
 # FOR 1000 freq and 100 N -> -0.34864337758262043  # attractive potential
 V = -0.34864337758262043
-#-0.3578945281365615
+# -0.3578945281365615
 V_for3 = -0.3213018026628682
 # simulation params
 FREQUENCY_LIMIT = 1000
@@ -56,70 +56,51 @@ def matsubara_frequency(T, m):
     return (2*m+1)*k_B * T * np.pi
 
 
+def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=100, threshold=2):
+    b2_range = np.linspace(0, 1, N_points)
+    b1_range = np.linspace(0, 1, N_points)
 
-def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=100, useBoundingBoxes=False):
-    chi_total = 0
-    bounding_boxes = np.array(
-        [[[0, .25], [.3, .9]], [[.3, .9], [.3, .9]], [[.3, .9], [0, .25]]])
+    B1, B2 = np.meshgrid(b1_range, b2_range)
 
-    if plot and useBoundingBoxes:
-        fig, axs = plt.subplots(1, 3, figsize=(15, 15))
+    KX = B1 * 4 / np.sqrt(3) * np.pi / a + np.pi/a * B2
+    KY = B2 * np.pi / a * 2
 
-    for i in range(3 if useBoundingBoxes else 1):
-        # create top left range
+    # select region near fermi level
+    if threshold != -1:
+        Z = np.where(np.abs(epsilon(KX, KY)) < threshold, [KX, KY], 0)
+    else:
+        Z = np.where(np.isreal(KX), [KX, KY], 0)
+    Valid_k_points = Z[:, ~(Z == 0).all(0)]
 
-        if useBoundingBoxes:
-            box = bounding_boxes[i]
-        else:
-            box = np.array([[0, 1], [0, 1]])
+    valid_kx, valid_ky = Valid_k_points
 
-        ky_range = np.linspace(box[1, 0], box[1, 1], int(
-            N_points * (box[1, 1] - box[1, 0])))
-        kx_range = np.linspace(box[0, 0], box[0, 1], int(
-            N_points * (box[0, 1] - box[0, 0])))
+    if plot:
+        plt.pcolor(KX, KY, epsilon(KX, KY), shading='auto')
+        plt.scatter(valid_kx, valid_ky, color="k")
 
-        X, Y = np.meshgrid(kx_range, ky_range)
+    GF_part = 0
+    block_size = FREQUENCY_LIMIT // 10
+    for block_step in range(10):
+        # print("block {}".format(block_step))
+        freq_block = np.zeros(2 * block_size)
+        for m in range(0, block_size):
+            freq_block[2 *
+                       m] = matsubara_frequency(T, m + block_step * block_size)
 
-        KX = X * 2*np.pi / a
-        KY = Y * 4*np.pi / a / np.sqrt(3) - X * 2*np.pi / a / np.sqrt(3)
+            freq_block[2*m +
+                       1] = matsubara_frequency(T, -(m + block_step * block_size))
 
-        chi_0 = np.zeros((KY.shape[0], KY.shape[1]),
-                         dtype=np.complex128)
+        GF_part -= (GF_down_down(valid_kx[:, None], valid_ky[:, None], freq_block[None, :], H_mag, theta, phi) *
+                    GF_up_up(-valid_kx[:, None], -valid_ky[:, None], -freq_block[None, :], H_mag, theta, phi) -
+                    GF_down_up(valid_kx[:, None], valid_ky[:, None], freq_block[None, :], H_mag, theta, phi) *
+                    GF_up_down(-valid_kx[:, None], -valid_ky[:, None], -freq_block[None, :], H_mag, theta, phi)).sum()
 
-        block_size = FREQUENCY_LIMIT // 10
-        for block_step in range(10):
-            # print("block {}".format(block_step))
-            freq_block = np.zeros(2 * block_size)
-            for m in range(0, block_size):
-                freq_block[2 *
-                           m] = matsubara_frequency(T, m + block_step * block_size)
-                if m == 0:
-                    pass
-                freq_block[2*m +
-                           1] = matsubara_frequency(T, -(m + block_step * block_size))
-
-            chi_0 -= (GF_up_up(KX[:, :, None], KY[:, :, None], freq_block[None, None, :], H_mag, theta, phi) *
-                      GF_down_down(-KX[:, :, None], -KY[:, :, None], -freq_block[None, None, :], H_mag, theta, phi) -
-                      GF_up_down(KX[:, :, None], KY[:, :, None], freq_block[None, None, :], H_mag, theta, phi) *
-                      GF_down_up(-KX[:, :, None], -KY[:, :, None], -freq_block[None, None, :], H_mag, theta, phi)).sum(axis=2)
-
-        chi_total += chi_0.sum()
-        if plot:
-            if useBoundingBoxes:
-                axs[i].pcolor(KX, KY, np.real(chi_0),
-                              shading="auto", vmin=-(N_points**2), vmax=0)
-            else:
-                plt.pcolor(KX, KY, np.real(chi_0),
-                           shading="auto", vmin=-(N_points**2), vmax=0)
-
-            # axs[i].set_aspect('equal')
-
-    return np.real(chi_total * T * k_B / (N_points**2))
+    chi_0 = np.real(T * k_B * GF_part / (N_points**2))
+    return chi_0
 
 
 def delta(T, H_mag, theta=np.pi/2, phi=0.):
     return 1 - Susceptibility(T, H_mag, theta, phi) * V
-
 
 
 def braket(start_H_U, start_H_L, T, theta=np.pi/2, phi=0., tol=0.0001):
@@ -132,20 +113,18 @@ def braket(start_H_U, start_H_L, T, theta=np.pi/2, phi=0., tol=0.0001):
     current_H_U = start_H_U
     current_H_L = start_H_L
 
-
     current_delta_U = delta(T, current_H_U, theta, phi)
     current_delta_L = delta(T, current_H_L, theta, phi)
 
     # print("Δ_max = {}, Δ_min = {}".format(
     #    current_delta_U, current_delta_L))
-    
-    if current_delta_U <0:
+
+    if current_delta_U < 0:
         print("Upper H too low")
         return start_H_L
     elif current_delta_L > 0:
         print("Lower H too high")
         return 0
-        
 
     while abs(current_delta_L) > tol and abs(current_delta_U) > tol and iterations < MAX_ITERATIONS:
         # print("Δ_max = {}, Δ_min = {}".format(
@@ -222,51 +201,51 @@ def plot_critical_field():
                          [78.33333333333333, 1.6731277221149106],
                          [80.0, 1.6055323903052856],
                          ])
-    
+
     crit_N_100_F_1000 = np.array([[0.0, 6.4984375],
-    [5.357142857142857, 6.44844970703125],
-    [10.714285714285714, 6.299657917022705],
-    [16.071428571428573, 6.057483779639005],
-    [21.428571428571427, 5.743319595947105],
-    [26.785714285714285, 5.379590012614576],
-    [32.142857142857146, 4.982589591744144],
-    [37.5, 4.5677602026018205],
-    [42.857142857142854, 4.140181589462194],
-    [48.214285714285715, 3.690395748447848],
-    [53.57142857142857, 3.2415962798918665],
-    [58.92857142857143, 2.8182170937345647],
-    [64.28571428571429, 2.446585850450542],
-    [69.64285714285714, 2.121180390720096],
-    [75.0, 1.8172138085219567],])
-    
+                                  [5.357142857142857, 6.44844970703125],
+                                  [10.714285714285714, 6.299657917022705],
+                                  [16.071428571428573, 6.057483779639005],
+                                  [21.428571428571427, 5.743319595947105],
+                                  [26.785714285714285, 5.379590012614576],
+                                  [32.142857142857146, 4.982589591744144],
+                                  [37.5, 4.5677602026018205],
+                                  [42.857142857142854, 4.140181589462194],
+                                  [48.214285714285715, 3.690395748447848],
+                                  [53.57142857142857, 3.2415962798918665],
+                                  [58.92857142857143, 2.8182170937345647],
+                                  [64.28571428571429, 2.446585850450542],
+                                  [69.64285714285714, 2.121180390720096],
+                                  [75.0, 1.8172138085219567], ])
+
     crit_N_150_F_1000 = np.array([[0.0, 6.4984375],
-    [5.357142857142857, 6.44844970703125],
-    [10.714285714285714, 6.274859285354614],
-    [16.071428571428573, 5.985412756353616],
-    [21.428571428571427, 5.571594671922503],
-    [26.785714285714285, 5.047945963086169],
-    [32.142857142857146, 4.371468975945483],
-    [37.5, 3.4203997117701217],
-    [42.857142857142854, 2.003393194149474],
-    [48.214285714285715, 2.003393194149474],
-    [53.57142857142857, 2.003393194149474],
-    [58.92857142857143, 2.003393194149474],
-    [64.28571428571429, 2.003393194149474],])
-    
+                                  [5.357142857142857, 6.44844970703125],
+                                  [10.714285714285714, 6.274859285354614],
+                                  [16.071428571428573, 5.985412756353616],
+                                  [21.428571428571427, 5.571594671922503],
+                                  [26.785714285714285, 5.047945963086169],
+                                  [32.142857142857146, 4.371468975945483],
+                                  [37.5, 3.4203997117701217],
+                                  [42.857142857142854, 2.003393194149474],
+                                  [48.214285714285715, 2.003393194149474],
+                                  [53.57142857142857, 2.003393194149474],
+                                  [58.92857142857143, 2.003393194149474],
+                                  [64.28571428571429, 2.003393194149474], ])
+
     crit_new_method = np.array([[0, 6.5],
-    [21.141128540039062, 5.8500000000000005],
-    [31.016577695554588, 5.2],
-    [39.23510592132524, 4.55],
-    [46.78323742503433, 3.9],
-    [54.70678554109935, 3.25],
-    [62.55796839113147, 2.6],
-    [73.04718026339746, 1.9500000000000002],])
+                                [21.141128540039062, 5.8500000000000005],
+                                [31.016577695554588, 5.2],
+                                [39.23510592132524, 4.55],
+                                [46.78323742503433, 3.9],
+                                [54.70678554109935, 3.25],
+                                [62.55796839113147, 2.6],
+                                [73.04718026339746, 1.9500000000000002], ])
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax.plot(crit_N_150_F_1000[:, 1], crit_N_150_F_1000[:, 0])
-    ax.plot(crit_N_100_F_1000[:, 1], crit_N_100_F_1000[:, 0], 'r', label="N = 100")
+    ax.plot(crit_N_100_F_1000[:, 1],
+            crit_N_100_F_1000[:, 0], 'r', label="N = 100")
     ax.plot(crit_new_method[:, 1], crit_new_method[:, 0], 'g', label="N = 100")
-
 
     ax.set_ylabel(r"$H_{c2}$ (T)")
     ax.set_xlabel(r"$T_c$ (K)")
@@ -276,13 +255,13 @@ def plot_critical_field():
     ax.set_aspect("auto")
 
 
-def test_freq_convergence(start, stop, points=10):
+def test_freq_convergence(start, stop, points=10, N_points=100):
     global FREQUENCY_LIMIT
     L = []
     chi = []
     for i in range(points+1):
         FREQUENCY_LIMIT = int(i * (stop - start) / (points) + start)
-        chi.append(Susceptibility(6.5, 0))
+        chi.append(Susceptibility(6.5, 0, N_points=N_points))
         L.append(FREQUENCY_LIMIT * 2)
 
         print("χ = {} at {} matsubara frequencies".format(chi[-1], L[-1]))
@@ -292,9 +271,9 @@ def test_freq_convergence(start, stop, points=10):
     plt.ylabel(r"$\chi^0$")
 
 
-
 def find_V():
-    return 1/ Susceptibility(6.5, 0)
+    return 1 / Susceptibility(6.5, 0)
+
 
 def find_phase_diagram(steps=15):
     H = 0
@@ -305,6 +284,7 @@ def find_phase_diagram(steps=15):
         H = braket(H_upper_estimate, H,  T)
         print("[{}, {}],".format(H, T))
 
+
 time_0 = time.time()
 # print(braket(.7, 1.35, 70))
 # print(delta(6.5, 0))
@@ -312,14 +292,12 @@ time_0 = time.time()
 V = find_V()
 
 
-
 print(V)
 find_phase_diagram(10)
 
 
-#print(Susceptibility(6.5, 0, False, 150))
-#plot_critical_field()
-#test_freq_convergence(500, 2000, 5)
+#print(Susceptibility(6.5, 0, plot=True, N_points=400, threshold=1))
+# plot_critical_field()
+#test_freq_convergence(500, 2000, 5, 200)
 
 print("Runtime: {} s".format(time.time() - time_0))
-
