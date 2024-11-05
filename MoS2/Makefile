@@ -16,5 +16,5 @@ $(TARGET): $(OBJECTS)
 clean:
 	rm -f $(OBJECTS) $(TARGET)
 
-test: test.o hamtools.o
+test:  hamtools.o test.o
 	$(FC) -o test test.o hamtools.o C:\msys64\ucrt64\lib\liblapack.a C:\msys64\ucrt64\lib\libblas.a 

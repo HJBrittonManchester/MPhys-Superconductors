@@ -1,6 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.constants
 
+
+MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
 
 # set up global variables and parameters (parameters will be optimised later)
 tolerance = 0.002  # set to ensure fermi momenta constraint gives two points
@@ -249,3 +252,26 @@ def optimise_parameters(soi_ratio):
         [alpha_zeeman_opt, alpha_rashba_opt, beta_opt])
 
     return optimised_parameters
+
+
+def Det(kx, ky, omega, H):
+    return (1j * omega - epsilon(kx, ky))**2 - (alpha_zeeman *
+                                                g_zeeman(kx, ky, beta)[2])**2 - \
+        ((MU_B * H - alpha_rashba * g_rashba(kx, ky, beta)[0])**2 +
+         (alpha_rashba*g_rashba(kx, ky, beta)[1])**2)
+
+
+def GF_up_up(kx, ky, omega, H):
+    return 1/Det(kx, ky, omega, H) * (1j * omega - epsilon(kx, ky) + alpha_zeeman * g_zeeman(kx, ky, beta)[2])
+
+
+def GF_down_down(kx, ky, omega, H):
+    return 1/Det(kx, ky, omega, H) * (1j * omega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2])
+
+
+def GF_up_down(kx, ky, omega, H):
+    return 1/Det(kx, ky, omega, H) * (-alpha_rashba * (g_rashba(kx, ky, beta)[0] - 1j * g_rashba(kx, ky, beta)[1]) - MU_B * H)
+
+
+def GF_down_up(kx, ky, omega, H):
+    return 1/Det(kx, ky, omega, H) * (-alpha_rashba * (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1]) - MU_B * H)

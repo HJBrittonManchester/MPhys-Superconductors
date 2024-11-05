@@ -7,8 +7,8 @@ Program test
   ! define variables
   real*8, allocatable:: kpoints(:,:), energy(:), validkpoints(:,:)
   complex*16, allocatable:: ham(:,:,:,:), gf(:,:,:,:), newham(:,:,:)
-  real*8 T, chi0, s
-  integer ki, nk
+  real*8 T, chi0, v, Hu, Hl, deltaU, deltaL, Hprev, deltaPrev
+  integer ki, nk, it, steps
   character(len=16) efmt, kfmt
   character(len=4) intstring
   real*8 singlek(3)
@@ -36,48 +36,30 @@ Program test
   !write(*,*) kpoints(1,:,1)
 
 
-  energy = epsilonk(hamk(kpoints,resolution*resolution))
+
+  energy = epsilonk(hamk(kpoints,resolution*resolution,0d0))
   !open(101,file="energy.dat")
   !write(101,efmt) energy(:)
   !close(101)
 
   !----- find valid kpoints
   do ki = 1, resolution*resolution
-    if ( abs(energy(ki)) < 2 ) then
+    if ( abs(energy(ki)) < .1 ) then
       nk = nk +1
       call AddToList(validkpoints,kpoints(:,ki))
     end if
   end do
 
-  write(*,*)nk
+  !write(*,*)nk
 
-  s = susc(6.5d0,0d0,nk,validkpoints)
+  chi0 = susc(6.5d0,0d0,nk,validkpoints)
 
-  write(*,*)s
-
-  !ham = Hamkold(+1)
-  !oldsampleham = ham(2,1,:,:)
-  !write(*,*)oldsampleham
-
-  !newham = hamk(kpoints)
-  !write(*,*)kpoints(1,:)
-  !sampleham = newham(4,:,:)
-  !write(*,*)sampleham
-
-
-  !gf = greens(0d0)
-  !write(*,*) gf
-
-  !chi0 = susc(6.5d0,0d0)
-  !write(*,*)chi0
-
+  v = 1/chi0
+  write(*,*)v
 
   
 
-  !hamksingle = hamk(singlek)
-  !write(*,*) hamksingle
-
-
+ 
   !-------- must be done to clear memory
   deallocate(rvec, hamr, ndeg)
 

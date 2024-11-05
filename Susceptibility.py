@@ -5,14 +5,14 @@ Created on Thu Oct  3 13:18:35 2024
 @author: hbrit
 """
 import numpy as np
-from phase_diagram import epsilon, g_rashba, g_zeeman, alpha_rashba, alpha_zeeman, beta, a
+from phase_diagram import epsilon, GF_up_up, GF_down_down, GF_up_down, GF_down_up,  a
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 
 import scipy.constants
 import time
 
-beta = 1.00730995e+01  # for 3 mev band gap at fermi surface
+# beta = 1.00730995e+01  # for 3 mev band gap at fermi surface
 
 #alpha_rashba *= 5
 #alpha_zeeman = 0
@@ -26,31 +26,8 @@ k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 V = -0.34864337758262043
 
 # simulation params
-FREQUENCY_LIMIT = 10000
-DEFAULT_N_POINTS = 1000
-
-
-def Det(kx, ky, omega, H):
-    return (1j * omega - epsilon(kx, ky))**2 - (alpha_zeeman *
-                                                g_zeeman(kx, ky, beta)[2])**2 - \
-        ((MU_B * H - alpha_rashba * g_rashba(kx, ky, beta)[0])**2 +
-         (alpha_rashba*g_rashba(kx, ky, beta)[1])**2)
-
-
-def GF_up_up(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (1j * omega - epsilon(kx, ky) + alpha_zeeman * g_zeeman(kx, ky, beta)[2])
-
-
-def GF_down_down(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (1j * omega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2])
-
-
-def GF_up_down(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (-alpha_rashba * (g_rashba(kx, ky, beta)[0] - 1j * g_rashba(kx, ky, beta)[1]) - MU_B * H)
-
-
-def GF_down_up(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (-alpha_rashba * (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1]) - MU_B * H)
+FREQUENCY_LIMIT = 100
+DEFAULT_N_POINTS = 200
 
 
 def matsubara_frequency(T, m):
@@ -471,10 +448,10 @@ print(V)
 
 # test_N_convergence(3)
 
-r = find_phase_diagram(30)
+#r = find_phase_diagram(30)
 
-plt.plot(r[:, 1], r[:, 0])
-print(r.tolist())
+#plt.plot(r[:, 1], r[:, 0])
+# print(r.tolist())
 
 
 #print(Susceptibility(6.5, 0, plot=True))

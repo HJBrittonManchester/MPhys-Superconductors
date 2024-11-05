@@ -6,6 +6,7 @@ module hamtools
   integer*4:: resolution= 140
   real*8,parameter::ef= .91d0 ! original value is 4.18903772 ! Fermi energy
   real*8, parameter::kb = 8.6173d-5
+  real*8, parameter::mub = 5.7883817982d-5
   integer, parameter:: freqmax = 500 !
 
 
@@ -46,9 +47,9 @@ contains
     karray = karray * pi2
   end function karray
 
-  function hamk(k, nk)
+  function hamk(k, nk, H)
     integer j, i, ki, nk
-    real*8 k(3,nk), phase
+    real*8 k(3,nk), phase, H
     complex*16 hamk( nk, 2,2)
 
 
@@ -64,10 +65,14 @@ contains
         hamk(ki,:,:)=hamk(ki, :,:)+Hamr(:,:,j)*dcmplx(cos(phase),-sin(phase))/float(ndeg(j))
       enddo
     enddo
-    !------ adjust fermi surface Dont know how to do
+    !------ adjust fermi surface 
 
     hamk(:,1,1) = hamk(:,1,1) - dcmplx(ef,0d0)
     hamk(:,2,2) = hamk(:,2,2) - dcmplx(ef,0d0)
+
+    !------- add H field term  along x axis
+    hamk(:, 1, 2) = hamk(:,1,2) - H * mub
+    hamk(:, 2, 1) = hamk(:,2,1) - H * mub
     
   end function hamk
 
@@ -105,54 +110,6 @@ contains
 
   end subroutine realham
 
-  function Hamkold(sign)
-
-    character(len=80) hamil_file
-    integer i,j,kx,ky,sign, alpha, beta
-    integer*4 ir, i1, i2
-    real*8 phase,a,b
-    complex*16 Hamkold(resolution,resolution, nb,nb)
-    real*8 kpoints(3,resolution,resolution), pi2
-    
-    pi2=4.0d0*atan(1.0d0)*2.0d0
-
-    !-------------Generate kpoints
-    kpoints = 0d0
-    do alpha = 1,resolution
-      do beta = 1,resolution
-        kpoints(1,alpha,beta) = alpha / real(resolution, 8)
-        kpoints(2,alpha,beta) = beta / real(resolution, 8)
-      enddo
-    enddo
-
-    kpoints = kpoints * sign * pi2
-
-    write(*,*) kpoints(1,:,:)
-
-    
-    !----------- Fourier Transform H
-
-    Hamkold = 0d0
-    do kx=1,resolution
-      do ky=1,resolution
-          do j=1,nr
-            phase=0.0d0
-            do i=1,3
-                phase=phase+kpoints(i,kx,ky)*rvec(i,j)
-            enddo
-            Hamkold(kx,ky,:,:)=Hamkold(kx,ky,:,:)+Hamr(:,:,j)*dcmplx(cos(phase),-sin(phase))/float(ndeg(j))
-          enddo
-        enddo
-    enddo
-
-
-    !------ adjust fermi surface Dont know how to do
-
-    Hamkold(:,:,1,1) = Hamkold(:,:,1,1) - ef
-    Hamkold(:,:,2,2) = Hamkold(:,:,2,2) - ef
-
-    
-  end function Hamkold
 
   function greens(freq, ham, nk)
     complex*16 Ham(nk,nb,nb)
@@ -180,14 +137,14 @@ contains
 
   function susc(T, H, nk, k)
     complex*16 Hamp(nk,2,2), Hamn(nk,2,2)
-    real*8 T,H, freq
+    real*8 T, H, freq
     real*8 susc, susc_arr(nk), k(3, nk)
     integer m, nk
     complex*16 gfp(nk,2,2), gfn(nk,2,2)
 
     
-    Hamp = hamk(k, nk)
-    Hamn = Hamk(-k, nk)
+    Hamp = hamk(k, nk, H)
+    Hamn = Hamk(-k, nk, H)
 
     susc = 0d0
     do m=-freqmax,freqmax
