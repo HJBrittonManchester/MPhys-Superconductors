@@ -26,15 +26,15 @@ k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 V = -0.34864337758262043
 
 # simulation params
-FREQUENCY_LIMIT = 100
-DEFAULT_N_POINTS = 200
+FREQUENCY_LIMIT = 10
+DEFAULT_N_POINTS = 1200
 
 
 def matsubara_frequency(T, m):
     return (2*m+1)*k_B * T * np.pi
 
 
-def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_N_POINTS, threshold=.01):
+def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_N_POINTS, threshold=.022):
     b2_range = np.linspace(0, 1, N_points)
     b1_range = np.linspace(0, 1, N_points)
 
@@ -42,7 +42,7 @@ def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_
 
     #
     KY = B1 * np.pi / a * 2
-    KX = B2 * 4 / np.sqrt(3) * np.pi / a - 2 * np.pi/a / np.sqrt(3) * B1
+    KX = B2 * 4 / np.sqrt(3) * np.pi / a + 2 * np.pi/a / np.sqrt(3) * B1
 
     # select region near fermi level
     Z_valid = np.where(np.abs(epsilon(KX, KY)) < threshold, [KX, KY], 0)
@@ -53,7 +53,7 @@ def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_
     Valid_k_points = Z_valid[:, ~(Z_valid == 0).all(0)]
     Invalid_k_points = Z_invalid[:, ~(Z_invalid == 0).all(0)]
 
-    # print(Valid_k_points.shape)
+    print(Valid_k_points.shape)
 
     valid_kx, valid_ky = Valid_k_points
     invalid_kx, invalid_ky = Invalid_k_points
@@ -64,31 +64,33 @@ def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_
         #norm = colors.CenteredNorm()
         #colors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
 
-        c = plt.pcolormesh(KX, KY, epsilon(KX, KY),
+        c = plt.pcolormesh(B1, B2, epsilon(KX, KY),
                            shading='auto', cmap='RdYlBu')
         cbar = plt.colorbar(c)
         cbar.set_label("Energy")
-        plt.scatter(valid_kx, valid_ky, color="k",
-                    label="excluded k-points")
+        #plt.scatter(valid_kx, valid_ky, color="k",
+        #            label="excluded k-points")
         plt.ylabel(r"$k_y$")
         plt.xlabel(r"$k_x$")
-        plt.plot(1/3 * (4 / np.sqrt(3) * np.pi / a + 2 /
-                 np.sqrt(3) * np.pi/a), 1/3 * np.pi / a * 2, 'xk')
-        plt.text(1/3 * (4 / np.sqrt(3) * np.pi / a + 2 / np.sqrt(3) *
-                 np.pi/a) + .04, 1/3 * np.pi / a * 2 + .04, r"$K^{\prime}$")
+        #plt.plot(1/3 * (4 / np.sqrt(3) * np.pi / a + 2 /
+        #         np.sqrt(3) * np.pi/a), 1/3 * np.pi / a * 2, 'xk')
+        #plt.text(1/3 * (4 / np.sqrt(3) * np.pi / a + 2 / np.sqrt(3) *
+        #         np.pi/a) + .04, 1/3 * np.pi / a * 2 + .04, r"$K^{\prime}$")
 
-        plt.plot(0, 4/3 * np.pi / a, 'xk')
-        plt.text(.04,  4/3 * np.pi / a + .04, r"$K$")
+        #plt.plot(0, 4/3 * np.pi / a, 'xk')
+        #plt.text(.04,  4/3 * np.pi / a + .04, r"$K$")
         print(valid_kx.shape)
 
     # print(valid_kx.shape)
 
     GF_part = np.zeros_like(valid_kx)
     block_size = FREQUENCY_LIMIT // 5
+    count = 0
     for block_step in range(5):
         # print("block {}".format(block_step))
         freq_block = np.zeros(2 * block_size)
         for m in range(0, block_size):
+            count += 2
             freq_block[2 *
                        m] = matsubara_frequency(T, m + block_step * block_size)
             if m == 0:
@@ -98,7 +100,7 @@ def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_
                        1] = matsubara_frequency(T, -(m + block_step * block_size))
         GF_part -= np.real((GF_up_up(valid_kx[:, None], valid_ky[:, None], freq_block[None, :], H_mag) * GF_down_down(-valid_kx[:, None], -valid_ky[:, None], -freq_block[None, :], H_mag) - GF_up_down(
             valid_kx[:, None], valid_ky[:, None], freq_block[None, :], H_mag) * GF_down_up(-valid_kx[:, None], -valid_ky[:, None], -freq_block[None, :], H_mag)).sum(axis=1))
-
+    print(count)
     chi_0 = GF_part * T * k_B / (N_points**2)
 
     # to plot susc

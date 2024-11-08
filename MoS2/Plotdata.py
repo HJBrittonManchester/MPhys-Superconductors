@@ -15,9 +15,10 @@ energydata = np.genfromtxt(energyFile, dtype=float)
 banddata = np.genfromtxt(bandFile, delimiter="   ", dtype=float)
 
 kpointdata = np.genfromtxt(kpointFile, dtype=float)
+
 resolution = energydata.shape[0]
 
-kpoints = kpointdata.reshape((resolution, resolution, 3))
+#kpoints = kpointdata.reshape((resolution, resolution, 3))
 
 
 def plot_color():
