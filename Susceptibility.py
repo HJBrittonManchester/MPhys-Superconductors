@@ -5,7 +5,7 @@ Created on Thu Oct  3 13:18:35 2024
 @author: hbrit
 """
 import numpy as np
-from phase_diagram import epsilon, GF_up_up, GF_down_down, GF_up_down, GF_down_up,  a
+from phase_diagram import epsilon, GF_up_up, GF_down_down, GF_up_down, GF_down_up,  a, b
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 
@@ -27,7 +27,9 @@ V = -0.34864337758262043
 
 # simulation params
 FREQUENCY_LIMIT = 10
-DEFAULT_N_POINTS = 1200
+DEFAULT_N_POINTS = 100
+
+en = 0
 
 
 def matsubara_frequency(T, m):
@@ -35,6 +37,7 @@ def matsubara_frequency(T, m):
 
 
 def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_N_POINTS, threshold=.022):
+    global en
     b2_range = np.linspace(0, 1, N_points)
     b1_range = np.linspace(0, 1, N_points)
 
@@ -43,12 +46,17 @@ def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_
     #
     KY = B1 * np.pi / a * 2
     KX = B2 * 4 / np.sqrt(3) * np.pi / a + 2 * np.pi/a / np.sqrt(3) * B1
+    
+    print(KX.size)
 
     # select region near fermi level
     Z_valid = np.where(np.abs(epsilon(KX, KY)) < threshold, [KX, KY], 0)
     Z_invalid = np.where(np.abs(epsilon(KX, KY)) >= threshold, [KX, KY], 0)
     # Z_invalid is the points which don't pass the threshold but this is used
     # for plotting
+    
+    en = epsilon(KX,KY)
+    np.savetxt('.\MoS2\en.txt', en, delimiter=',')
 
     Valid_k_points = Z_valid[:, ~(Z_valid == 0).all(0)]
     Invalid_k_points = Z_invalid[:, ~(Z_invalid == 0).all(0)]

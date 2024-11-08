@@ -30,16 +30,23 @@ Program test
 
 
   kpoints = karray()
-  !open(100,file="kpoints.dat")
-  !write(100,kfmt) kpoints(:,:)
-  !close(100)
+
   !write(*,*) kpoints(1,:,1)
 
- 
+  !energy = epsilonk(hamk(kpoints, resolution*resolution, 0d0))
 
-  real_k(1,:) = kpoints(2,:) * 2d0 / sqrt(3d0)  + kpoints(1,:) * 1d0/ sqrt(3d0)
+  write(*,*)kpoints(:,resolution*resolution)
+
+
+  real_k(1,:) = kpoints(2,:) * 2.0d0 / 3d0  + kpoints(1,:) * 1d0/ 3d0
   real_k(2,:) = kpoints(1,:)
   real_k(3,:) = 0d0
+
+  write(*,*)real_k(:,resolution*resolution)
+
+  open(100,file="kpoints.dat")
+  write(100,kfmt) real_k(:,:)
+  close(100)
 
   energy = eps(real_k,resolution*resolution)
   open(101,file="energy.dat")

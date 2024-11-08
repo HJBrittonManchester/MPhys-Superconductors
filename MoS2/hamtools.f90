@@ -3,7 +3,7 @@ module hamtools
 
   !---------- user defined parameters
   character(len=80):: prefix="MoS2"
-  integer*4:: resolution= 1200
+  integer*4:: resolution= 100
   real*8,parameter::ef= .915d0 ! original value is 4.18903772 ! Fermi energy
   real*8, parameter::kb = 8.6173d-5
   real*8, parameter::mub = 5.7883817982d-5
@@ -57,8 +57,8 @@ contains
     karray = 0d0
     do alpha = 1,resolution
       do beta = 1,resolution
-        karray(1,(beta-1) * resolution + alpha) = (alpha-1) / real(resolution, 8)
-        karray(2,(beta-1) * resolution+alpha) = (beta-1) / real(resolution, 8)
+        karray(1,(beta-1) * resolution + alpha) = (alpha-1d0) / real(resolution, 8)
+        karray(2,(beta-1) * resolution+ alpha) = (beta-1d0) / real(resolution, 8)
       enddo
     enddo
 
@@ -184,7 +184,7 @@ contains
     complex*16 toyHamK(nk, 2, 2)
     real*8 k(3, nk), H, real_k(3, nk)
 
-    real_k(1,:) = k(2,:) * 2d0 / sqrt(3d0)  + k(1,:) * 1d0/sqrt(3d0)
+    real_k(1,:) = k(2,:) * 2.0d0 /sqrt( 3d0)  + k(1,:) * 1d0/sqrt(3d0)
     real_k(2,:) = k(1,:)
     real_k(3,:) = 0d0
 
@@ -278,6 +278,8 @@ contains
     do ki=1,resolution*resolution
       call zheev('V','U',nb,Ham(ki,:,:),nb,ene(:,ki),work,lwork,rwork,info)
     enddo
+
+    write(*,*)ene
 
     !------- get average of all energy bands at k-point
     epsilonk = 0d0
