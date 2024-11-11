@@ -48,3 +48,8 @@ def plot_color():
 # for ploting band from band.dat
 def plot_band():
     plt.plot(banddata[:, 0], banddata[:, 1])
+
+
+def plot_phase():
+    phasedata = np.genfromtxt("phase.dat")
+    plt.plot(phasedata[:,1], phasedata[:,0])

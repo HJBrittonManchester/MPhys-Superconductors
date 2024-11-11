@@ -11,11 +11,13 @@ Program test
   integer ki, nk, it, steps
   character(len=16) efmt, kfmt
   character(len=4) intstring
-  real*8 singlek(3)
+  real*8 singlek(3), tolerance
   complex*16 oldsampleham(2,2), sampleham(2,2)
 
   allocate(kpoints(3,resolution*resolution),energy(resolution*resolution), real_k(3, resolution*resolution))
   allocate(ham(resolution,resolution,2,2),gf(resolution,resolution,2,2),newham(resolution*resolution,2,2))
+
+  tolerance = 1d-4
 
   !-------------- Define formatting of output files
   write(intstring,'(i4)')resolution
@@ -38,11 +40,11 @@ Program test
   write(*,*)kpoints(:,resolution*resolution)
 
 
-  real_k(1,:) = kpoints(2,:) * 2.0d0 / 3d0  + kpoints(1,:) * 1d0/ 3d0
+  real_k(1,:) = kpoints(2,:) * 2.0d0 / sqrt(3d0)  + kpoints(1,:) * 1d0/ sqrt(3d0)
   real_k(2,:) = kpoints(1,:)
   real_k(3,:) = 0d0
 
-  write(*,*)real_k(:,resolution*resolution)
+  !write(*,*)real_k(:,resolution*resolution)
 
   open(100,file="kpoints.dat")
   write(100,kfmt) real_k(:,:)
@@ -68,6 +70,118 @@ Program test
 
   v = 1/chi0
   write(*,*)v
+
+
+  !!! brackets
+
+
+  open(90,file="phase.dat")
+
+  do it=1, 20
+    !------ braketing
+    steps = 1
+    T = 6.5d0 - (it ) * 3d-1
+      ! guesses
+    Hu = 50d0
+    Hl = -5d0
+
+    !write(*,*) 
+    deltaL = 1 - v *susc(T, Hl, nk, validkpoints)
+    deltaU = 1 - v *susc(T, Hu, nk, validkpoints)
+    deltaPrev = 0.0d0
+    Hprev = 0d0
+
+
+    
+
+    111  write(*,*)steps
+
+
+    !write(*,*) deltaL
+    !write(*,*) deltaU
+
+    if(deltaU < 0 .and. steps == 1) then
+      write(*,*)"Upper too low"
+      goto 888
+    elseif(deltaL > 0 .and. steps==1) then
+      write(*,*)"lower too high"
+      goto 888
+
+    end if
+    
+
+
+    if(deltaL > 0 .and. steps> 1) then
+    !--- Hl over stepped the 0 point
+    Hu = Hl
+    deltaU = deltaL
+    deltaL = deltaPrev
+    Hl = Hprev
+    
+    elseif(deltaU < 0 .and. steps> 1 ) then
+      !--- Hu over stepped the 0 point
+      Hl = Hu
+      deltaL = deltaU
+      deltaU = deltaPrev
+      HU = Hprev
+    end if
+
+
+    if(deltaL + deltaU >= 0) then
+
+      !----- update previous values
+      Hprev = Hu
+      deltaPrev = deltaU
+
+      !----- find new Hu
+      Hu = (Hu + Hl) / 2d0
+      deltaU = 1- v* susc(T,Hu,nk,validkpoints)
+
+
+    elseif(deltaL+deltaU < 0) then 
+      !----- update previous values
+      Hprev = Hl
+      deltaPrev = deltaL
+
+      !----- find new Hu
+      Hl = (Hu + Hl) / 2d0
+      deltaL = 1 - v* susc(T,Hl,nk,validkpoints)
+
+    end if
+
+
+    if ( abs(deltaU) < tolerance ) then
+      write(90,'(2(F10.6,1X))') Hu, T
+      goto 999
+    elseif(abs(deltaL) < tolerance) then
+      write(90,'(2(F10.6,1X))') Hl, T
+      goto 999
+    end if
+
+    steps = steps + 1
+
+
+
+    !write(*,*)steps
+
+    if(steps > 20) then
+      write(90,'(2(F10.6,1X))') Hl, T
+      goto 999
+    endif
+
+    goto 111
+
+
+    !------ 
+    888 write(*,*)"invalid initial range of H"
+    999 write(*,*)"end"
+  enddo
+
+  close(90)
+
+
+
+
 
   
 

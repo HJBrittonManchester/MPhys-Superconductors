@@ -3,12 +3,12 @@ module hamtools
 
   !---------- user defined parameters
   character(len=80):: prefix="MoS2"
-  integer*4:: resolution= 100
+  integer*4:: resolution= 1000
   real*8,parameter::ef= .915d0 ! original value is 4.18903772 ! Fermi energy
   real*8, parameter::kb = 8.6173d-5
   real*8, parameter::mub = 5.7883817982d-5
-  integer, parameter:: freqmax = 10 !
-  real*8, parameter::threshold = 0.022
+  integer, parameter:: freqmax = 1000 !
+  real*8, parameter::threshold = 0.01
 
   real*8, parameter:: pi2 = 4.0d0*atan(1.0d0)*2.0d0
 
@@ -246,10 +246,12 @@ contains
       mcount = mcount + 1
       susc_arr = -kb* T *( gfp(:,1,1) * gfn(:,2,2) - gfp(:,1,2)*gfn(:,2,1))
 
+      !write(*,*) sum(susc_arr)
+
       susc = susc + sum(susc_arr)
     enddo
 
-    write(*,*) mcount
+    !write(*,*) susc
 
     susc = susc / (resolution*resolution)
 
