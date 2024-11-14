@@ -254,24 +254,45 @@ def optimise_parameters(soi_ratio):
     return optimised_parameters
 
 
-def Det(kx, ky, omega, H):
+def Det(kx, ky, omega, hx, hy, hz):
+    
+
+    
     return (1j * omega - epsilon(kx, ky))**2 - (alpha_zeeman *
-                                                g_zeeman(kx, ky, beta)[2])**2 - \
-        ((MU_B * H - alpha_rashba * g_rashba(kx, ky, beta)[0])**2 +
-         (alpha_rashba*g_rashba(kx, ky, beta)[1])**2)
+                                                g_zeeman(kx, ky, beta)[2] + MU_B* hz)**2 - \
+        (( - alpha_rashba * g_rashba(kx, ky, beta)[0] + MU_B* hx)**2 +
+         (-alpha_rashba*g_rashba(kx, ky, beta)[1] + MU_B* hy)**2)
 
 
-def GF_up_up(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (1j * omega - epsilon(kx, ky) + alpha_zeeman * g_zeeman(kx, ky, beta)[2])
+def GF_up_up(kx, ky, omega, hx, hy, hz):
+    
+
+    return (1j * omega - epsilon(kx, ky) + alpha_zeeman * g_zeeman(kx, ky, beta)[2] - hz * MU_B)
 
 
-def GF_down_down(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (1j * omega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2])
+def GF_down_down(kx, ky, omega,  hx, hy, hz):
+    return  (1j * omega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2] + hz * MU_B)
 
 
-def GF_up_down(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (-alpha_rashba * (g_rashba(kx, ky, beta)[0] - 1j * g_rashba(kx, ky, beta)[1]) - MU_B * H)
+def GF_up_down(kx, ky, omega,  hx, hy, hz):
+    return  (-alpha_rashba * (g_rashba(kx, ky, beta)[0] - 1j * g_rashba(kx, ky, beta)[1]) - MU_B * complex(hx, -hy))
 
 
-def GF_down_up(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (-alpha_rashba * (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1]) - MU_B * H)
+def GF_down_up(kx, ky, omega,  hx, hy, hz):
+    return (-alpha_rashba * (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1]) - MU_B * complex(hx, hy))
+
+def GF_susc(kx,ky,omega, H, theta=np.pi/2, phi = 0):
+    
+    hx = H * np.sin(theta) * np.cos(phi)
+    hy = H * np.sin(theta) * np.sin(phi)
+    hz = H * np.cos(theta)
+    
+    chi = GF_up_up(kx,ky,omega,hx,hy,hz) * GF_down_down(-kx, -ky, -omega, hx, hy, hz) - \
+        GF_up_down(kx,ky,omega,hx,hy,hz) * GF_down_up(-kx, -ky, -omega, hx, hy, hz)
+        
+    chi = -chi /(Det(kx,ky,omega,hx,hy,hz) * Det(-kx, -ky, -omega, hx, hy, hz))
+    
+    return chi
+    
+    
+    

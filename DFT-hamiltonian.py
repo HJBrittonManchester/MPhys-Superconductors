@@ -15,23 +15,23 @@ MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
 k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
-DEBYE_ENERGY = 0.01  # eV
+DEBYE_ENERGY = 0.022 # 0.022  # eV
 FERMI_ENERGY = 0.915  # eV
 
 
 # Simulation settings
-RESOLUTION = 800
-NUM_FREQ = 1000
+RESOLUTION = 200
+NUM_FREQ = 500
 PRESELECTION_BOXSIZE = 0.22  # set to -1 to use full area but, 0.22 works well
 BRACKET_TOLERANCE = 1e-4
 MAX_BRACKET_STEPS = 25
 
-TEMP_START = 6.45
-TEMP_STOP = 0.5
+TEMP_START = 0
+TEMP_STOP = np.pi
 TEMP_STEPS = 10
 
-H_U_START = 50
-H_L_START = 0
+H_U_START = 100
+H_L_START = -10
 
 
 def get_hamr():
@@ -101,6 +101,27 @@ def get_k(res=RESOLUTION, size_of_box=PRESELECTION_BOXSIZE):
         return k
 
 
+def get_k_path(path =['G','M','K', 'G'],  res=RESOLUTION):
+    name_points = {'G': np.array([0,0,0]), 'K' : np.array([1/3, 1/3,0]), 'M' : np.array([1/2, 0, 0])}
+    
+    path_lengths = np.zeros(len(path)-1)
+    
+    for i in range(len(path)-1):
+        path_lengths[i] = np.linalg.norm((name_points[path[i+1]] - name_points[path[i]]))
+    
+    path_size = np.array(path_lengths * RESOLUTION / np.sum(path_lengths), dtype = int)
+    
+    kpath = []
+    
+    for i in range(len(path)-1):
+        for j in range(path_size[i]):
+            kpath.append( j / path_size[i] * (name_points[path[i+1]] - name_points[path[i]]) + name_points[path[i]])
+            
+            
+    return np.array(kpath).T * 2 * np.pi
+            
+
+
 def find_hamk(k, hamr, ndeg, rvec):
     ham = np.zeros((2, 2, k.shape[1]), dtype=np.complex128)
     for i in range(k.shape[1]):
@@ -148,6 +169,20 @@ def projection_y(hamk, band=0):
 
     return proj
 
+
+def get_bands_on_path(path =['G','M','K', 'G']):
+    
+    hamr, ndeg, rvec = get_hamr()  # Read in the real-space hamiltonian
+
+    hamk = find_hamk(get_k_path(path), hamr, ndeg, rvec)  # FT the hamiltonian
+
+    hamk_pert = vary_ham(hamk)  # Adjust the fermi level
+
+    # Find the energy eigen values
+    energy = epsilon(hamk_pert)
+    
+    return energy
+    
 
 def vary_ham(ham, ef=FERMI_ENERGY, H=0, theta=np.pi / 2, phi=0):
 
@@ -271,8 +306,8 @@ def braket(ham_P, ham_N, T, v, start_H_U=H_U_START, start_H_L=H_L_START,
     current_H_U = start_H_U
     current_H_L = start_H_L
 
-    current_delta_U = delta(T, v,  ham_P, ham_N, H=current_H_U)
-    current_delta_L = delta(T, v,  ham_P, ham_N, H=current_H_L)
+    current_delta_U = delta(T, v,  ham_P, ham_N, H=current_H_U, theta = theta , phi = phi)
+    current_delta_L = delta(T, v,  ham_P, ham_N, H=current_H_L, theta = theta , phi = phi)
 
     # print("Δ_max = {}, Δ_min = {}".format(
     #     current_delta_U, current_delta_L))
@@ -300,7 +335,7 @@ def braket(ham_P, ham_N, T, v, start_H_U=H_U_START, start_H_L=H_L_START,
             # reset upper
             current_delta_U = current_delta_L
             # recalculate lower
-            delta(T, v,  ham_P, ham_N, H=current_H_L)
+            delta(T, v,  ham_P, ham_N, H=current_H_L, theta = theta , phi = phi)
 
         elif current_delta_L < 0 and current_delta_U < 0:
             print("both -ve sign")
@@ -311,21 +346,21 @@ def braket(ham_P, ham_N, T, v, start_H_U=H_U_START, start_H_L=H_L_START,
             # reset lower
             current_delta_L = current_delta_U
             # recalculate Upper
-            current_delta_U = delta(T, v,  ham_P, ham_N, H=current_H_U)
+            current_delta_U = delta(T, v,  ham_P, ham_N, H=current_H_U, theta = theta , phi = phi)
 
         elif abs(current_delta_L) > abs(current_delta_U):
             old_H_L = current_H_L
             current_H_L = (current_H_L + current_H_U) / 2
-            current_delta_L = delta(T, v,  ham_P, ham_N, H=current_H_L)
+            current_delta_L = delta(T, v,  ham_P, ham_N, H=current_H_L, theta = theta , phi = phi)
 
         else:
             old_H_U = current_H_U
             current_H_U = (current_H_L + current_H_U) / 2
-            current_delta_U = delta(T, v,  ham_P, ham_N, H=current_H_U)
+            current_delta_U = delta(T, v,  ham_P, ham_N, H=current_H_U, theta = theta , phi = phi)
 
         iterations += 1
 
-    if iterations == MAX_BRACKET_STEPS:
+    if iterations == MAX_BRACKET_STEPS-1:
         print("Reached max iterations")
 
     if abs(current_delta_L) < tol:
@@ -344,18 +379,29 @@ def bracketing(ham_P, ham_N, v):
             (TEMP_STEPS-1) * t_index
         T_array.append(temp_T)
 
-        H_array.append(braket(ham_P.copy(), ham_N.copy(), temp_T, v))
+        H_array.append(braket(ham_P.copy(), ham_N.copy(), 6.4, v,phi = temp_T))
+        
+        print(H_array[-1])
 
     print(T_array)
     print(H_array)
     plt.plot(T_array, H_array)
+    plt.title(r"res: {}, $N_f$ = {}".format(RESOLUTION, NUM_FREQ))
 
 
 def main():
-    ham_P, ham_N, v = gen_unperturbed_hamiltonians()
-    print(v)
+    #ham_P, ham_N, v = gen_unperturbed_hamiltonians()
+    #print(v)
 
-    bracketing(ham_P, ham_N, v)
+    #bracketing(ham_P, ham_N, v)
+    e = get_bands_on_path()
+    ks = np.linalg.norm(np.array([2/3 * np.pi,2/3 * np.pi,0])[:,None] -  get_k_path(),axis=0)
+    ks[RESOLUTION:] = - ks[RESOLUTION:]
+    
+    
+    print(ks)
+    
+    plt.plot(ks,e)
 
 
 main()

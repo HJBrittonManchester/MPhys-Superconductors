@@ -5,7 +5,7 @@ Created on Thu Oct  3 13:18:35 2024
 @author: hbrit
 """
 import numpy as np
-from phase_diagram import epsilon, GF_up_up, GF_down_down, GF_up_down, GF_down_up,  a, b
+from phase_diagram import epsilon, GF_susc,  a, b
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 
@@ -26,8 +26,8 @@ k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 V = -0.34864337758262043
 
 # simulation params
-FREQUENCY_LIMIT = 10
-DEFAULT_N_POINTS = 100
+FREQUENCY_LIMIT = 500
+DEFAULT_N_POINTS = 500
 
 en = 0
 
@@ -47,7 +47,7 @@ def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_
     KY = B1 * np.pi / a * 2
     KX = B2 * 4 / np.sqrt(3) * np.pi / a + 2 * np.pi/a / np.sqrt(3) * B1
     
-    print(KX.size)
+    #print(KX.size)
 
     # select region near fermi level
     Z_valid = np.where(np.abs(epsilon(KX, KY)) < threshold, [KX, KY], 0)
@@ -61,7 +61,7 @@ def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_
     Valid_k_points = Z_valid[:, ~(Z_valid == 0).all(0)]
     Invalid_k_points = Z_invalid[:, ~(Z_invalid == 0).all(0)]
 
-    print(Valid_k_points.shape)
+    #print(Valid_k_points.shape)
 
     valid_kx, valid_ky = Valid_k_points
     invalid_kx, invalid_ky = Invalid_k_points
@@ -87,11 +87,11 @@ def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_
 
         #plt.plot(0, 4/3 * np.pi / a, 'xk')
         #plt.text(.04,  4/3 * np.pi / a + .04, r"$K$")
-        print(valid_kx.shape)
+        #print(valid_kx.shape)
 
     # print(valid_kx.shape)
 
-    GF_part = np.zeros_like(valid_kx)
+    GF_part = np.zeros_like(valid_kx, dtype=complex)
     block_size = FREQUENCY_LIMIT // 5
     count = 0
     for block_step in range(5):
@@ -106,23 +106,23 @@ def Susceptibility(T, H_mag, theta=np.pi/2, phi=0, plot=False, N_points=DEFAULT_
 
             freq_block[2*m +
                        1] = matsubara_frequency(T, -(m + block_step * block_size))
-        GF_part -= np.real((GF_up_up(valid_kx[:, None], valid_ky[:, None], freq_block[None, :], H_mag) * GF_down_down(-valid_kx[:, None], -valid_ky[:, None], -freq_block[None, :], H_mag) - GF_up_down(
-            valid_kx[:, None], valid_ky[:, None], freq_block[None, :], H_mag) * GF_down_up(-valid_kx[:, None], -valid_ky[:, None], -freq_block[None, :], H_mag)).sum(axis=1))
-    print(count)
+        GF_part -= GF_susc(valid_kx[:,None],valid_ky[:,None],freq_block[None, :], H_mag, theta, phi).sum(axis=1)
+    #print(count)
     chi_0 = GF_part * T * k_B / (N_points**2)
 
     # to plot susc
     #trip = plt.tripcolor(valid_kx, valid_ky, chi_0)
     # plt.colorbar(trip)
+    #print(np.imag(chi_0.sum()) / np.real(chi_0.sum()))
 
-    return chi_0.sum()
+    return np.real(chi_0.sum())
 
 
 def delta(T, H_mag, theta=np.pi/2, phi=0., N_points=DEFAULT_N_POINTS):
     return 1 - Susceptibility(T, H_mag, theta, phi, N_points=N_points) * V
 
 
-def braket(start_H_U, start_H_L, T, theta=np.pi/2, phi=0., tol=0.0001, N_points=DEFAULT_N_POINTS):
+def braket(start_H_U, start_H_L, T, theta=np.pi/2, phi=0., tol=1e-5, N_points=DEFAULT_N_POINTS):
 
     # Larger H => +ve Delta
     # Smaller H => -ve Delta
@@ -190,7 +190,7 @@ def braket(start_H_U, start_H_L, T, theta=np.pi/2, phi=0., tol=0.0001, N_points=
 
         iterations += 1
 
-    if iterations == MAX_ITERATIONS:
+    if iterations == MAX_ITERATIONS -1:
         print("Reached max iterations")
 
     if abs(current_delta_L) < tol:
@@ -438,13 +438,15 @@ def find_phase_diagram(steps=25):
     values = []
     H = 5
     for T_index in range(steps):
-        T = 6.3 * (1-(T_index) / steps) + .2
-        H_upper_estimate = range_guesser(T) + 20
-        H_lower_estimate = np.clip(range_guesser(T) - 25, -1, 100)
+        T = 3 * (1-(T_index) / steps) + .2
+        H_upper_estimate =30 + np.random.rand() * 5 #range_guesser(T) + 20
+        H_lower_estimate =0 #np.clip(range_guesser(T) - 25, -1, 100)
+        
+        angle = (T_index) / (steps-1) * np.pi 
 
-        H = braket(H_upper_estimate, 0.5,  T)
-        values.append([H, T])
-        print("[{}, {}],".format(H, T))
+        H = braket(H_upper_estimate, H_lower_estimate, 6.4, phi=angle)
+        values.append([H, angle])
+        print("[{}, {}],".format(H, angle))
     return np.array(values)
 
 
@@ -458,9 +460,12 @@ print(V)
 
 # test_N_convergence(3)
 
-#r = find_phase_diagram(30)
+r = find_phase_diagram(20)
 
-#plt.plot(r[:, 1], r[:, 0])
+plt.plot(r[:, 1], r[:, 0])
+#plt.xlabel(r"$\theta$")
+#plt.ylabel(r"$H_c$")
+#plt.savefig(fname="Spike.png", dpi=200)
 # print(r.tolist())
 
 
