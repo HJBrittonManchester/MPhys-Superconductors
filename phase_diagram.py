@@ -20,6 +20,10 @@ beta = 2.75681159e+01  # 1.0073e1
 #
 chemical_potential = -0.75
 
+H_mag = 0
+theta = 0
+phi = 0
+
 # hopping parameters
 t1 = 0.146
 t2 = -0.4 * t1
@@ -92,7 +96,7 @@ def g_rashba(kx, ky, beta):
     return np.array([F(kx, ky, beta) * x_term, F(kx, ky, beta) * y_term, 0], dtype=object)
 
 
-def H_0(kx, ky):
+def H_0(kx, ky, H_field=H_mag, H_theta=theta, H_phi=phi):
     hamiltonian = np.zeros((2, 2), dtype=np.complex128)
 
     # add kinetic term
@@ -254,24 +258,59 @@ def optimise_parameters(soi_ratio):
     return optimised_parameters
 
 
-def Det(kx, ky, omega, H):
+def Det(kx, ky, omega, H_mag, theta, phi):
+
+    Hx = H_mag*np.sin(theta)*np.cos(phi)
+    Hy = H_mag*np.sin(theta)*np.sin(phi)
+    Hz = H_mag*np.cos(theta)
+
+    return (1j*omega - epsilon(kx, ky))**2 - (alpha_zeeman*g_zeeman(kx, ky, beta)[2] - MU_B*Hz)**2 - \
+        ((MU_B*Hx - alpha_rashba*g_rashba(kx, ky, beta)
+         [0])**2 - (MU_B*Hy + alpha_rashba*g_rashba(kx, ky, beta)[1])**2)
+
+
+def GF_up_up(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (1j*omega - epsilon(kx, ky) + alpha_zeeman*g_zeeman(kx, ky, beta)[2] + MU_B*H_mag*np.cos(theta))
+
+
+def GF_down_down(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (1j*omega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2] + MU_B*H_mag*np.cos(theta))
+
+
+def GF_up_down(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (MU_B*H_mag*np.sin(theta)*np.cos(phi) - alpha_rashba*g_rashba(kx, ky, beta)[0]) \
+        - 1j*(MU_B*H_mag*np.sin(theta)*np.sin(phi) -
+              alpha_rashba*g_rashba(kx, ky, beta)[1])
+
+
+def GF_down_up(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (MU_B*H_mag*np.sin(theta)*np.cos(phi) - alpha_rashba*g_rashba(kx, ky, beta)[0]) + \
+        1j*(MU_B*H_mag*np.sin(theta)*np.sin(phi) +
+            alpha_rashba*g_rashba(kx, ky, beta)[1])
+
+
+"""
+
+
+def Det(kx, ky, omega, H_mag, theta, phi):
     return (1j * omega - epsilon(kx, ky))**2 - (alpha_zeeman *
                                                 g_zeeman(kx, ky, beta)[2])**2 - \
-        ((MU_B * H - alpha_rashba * g_rashba(kx, ky, beta)[0])**2 +
+        ((MU_B * H_mag - alpha_rashba * g_rashba(kx, ky, beta)[0])**2 +
          (alpha_rashba*g_rashba(kx, ky, beta)[1])**2)
 
 
-def GF_up_up(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (1j * omega - epsilon(kx, ky) + alpha_zeeman * g_zeeman(kx, ky, beta)[2])
+def GF_up_up(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (1j * omega - epsilon(kx, ky) + alpha_zeeman * g_zeeman(kx, ky, beta)[2])
 
 
-def GF_down_down(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (1j * omega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2])
+def GF_down_down(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (1j * omega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2])
 
 
-def GF_up_down(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (-alpha_rashba * (g_rashba(kx, ky, beta)[0] - 1j * g_rashba(kx, ky, beta)[1]) - MU_B * H)
+def GF_up_down(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (-alpha_rashba * (g_rashba(kx, ky, beta)[0] - 1j * g_rashba(kx, ky, beta)[1]) - MU_B * H_mag)
 
 
-def GF_down_up(kx, ky, omega, H):
-    return 1/Det(kx, ky, omega, H) * (-alpha_rashba * (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1]) - MU_B * H)
+def GF_down_up(kx, ky, omega, H_mag, theta, phi):
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (-alpha_rashba * (g_rashba(kx, ky, beta)[0] + 1j * g_rashba(kx, ky, beta)[1]) - MU_B * H_mag)
+"""

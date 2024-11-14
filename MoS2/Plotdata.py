@@ -21,6 +21,7 @@ kpoints = kpointdata.reshape((resolution, resolution, 3))
 
 
 def plot_color():
+
     alpha_range = np.linspace(0, 1, resolution)
     beta_range = np.linspace(0, 1, resolution)
 
@@ -29,17 +30,29 @@ def plot_color():
     plt.figure()
 
     c = plt.pcolormesh(A, B, energydata, shading='auto')
-    plt.contourf(A, B, energydata, levels=[-0.1, 0.1], colors='red', alpha=0.5)
-    plt.colorbar(c)
+    plt.contourf(A, B, energydata,
+                 levels=[-0.022, 0.022], colors='red', alpha=0.5, label="Included k-values")
+    cbar = plt.colorbar(c)
+    cbar.set_label("Energy (normalised to $E_{F}$)")
     plt.plot(1/3, 1/3, 'wx')
     plt.plot(2 * 1/3, 2 * 1/3, 'wx')
 
     plt.xlabel(r"$\beta$")
     plt.ylabel(r"$\alpha$")
 
+    plt.savefig("energy_spectrum_realham", dpi=400)
     plt.show()
 
 
 # for ploting band from band.dat
 def plot_band():
-    plt.plot(banddata[:, 0], banddata[:, 1])
+    fig, ax = plt.subplots(dpi=400)
+
+    ax.plot(banddata[:, 0], banddata[:, 1], 'k-')
+    ax.grid(True, linestyle='--')
+    ax.set_title("$\Gamma$ $\leftarrow$ $K$" r"$\rightarrow$ $M$")
+    ax.set_xlabel("$k$ $(\AA^{-1})$")
+    ax.set_ylabel("$E - E_F$ $(eV)$")
+    #ax.set_xlim(-0.2, 0.2)
+    #ax.set_ylim(-0.2, 0.05)
+    plt.show()
