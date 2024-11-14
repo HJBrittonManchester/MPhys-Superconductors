@@ -35,9 +35,9 @@ Program test
 
   !write(*,*) kpoints(1,:,1)
 
-  !energy = epsilonk(hamk(kpoints, resolution*resolution, 0d0))
+  energy = epsilonk(hamk(kpoints, resolution*resolution, 0d0))
 
-  write(*,*)kpoints(:,resolution*resolution)
+  !write(*,*)kpoints(:,resolution*resolution)
 
 
   real_k(1,:) = kpoints(2,:) * 2.0d0 / sqrt(3d0)  + kpoints(1,:) * 1d0/ sqrt(3d0)
@@ -47,13 +47,15 @@ Program test
   !write(*,*)real_k(:,resolution*resolution)
 
   open(100,file="kpoints.dat")
-  write(100,kfmt) real_k(:,:)
+  !write(100,kfmt) real_k(:,:)
   close(100)
 
-  energy = eps(real_k,resolution*resolution)
+  !energy = ep(real_k,resolution*resolution)
   open(101,file="energy.dat")
-  write(101,efmt) energy(:)
+  !write(101,efmt) energy(:)
   close(101)
+
+  !write(*,*)energy
 
   !----- find valid kpoints
   nk = 0
@@ -77,12 +79,12 @@ Program test
 
   open(90,file="phase.dat")
 
-  do it=1, 20
+  do it=1, 10
     !------ braketing
     steps = 1
-    T = 6.5d0 - (it ) * 3d-1
+    T = 6.5d0 - (it -1) * 65d-2
       ! guesses
-    Hu = 50d0
+    Hu = 80d0
     Hl = -5d0
 
     !write(*,*) 

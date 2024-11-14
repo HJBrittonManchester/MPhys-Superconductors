@@ -1,11 +1,11 @@
 
 FC = gfortran
 
-OBJECTS = wanr2k.o 
+OBJECTS = test.o hamtools.o
 
-LIBDIR = C:\MSYS2\mingw64\lib
+LIBDIR = C:\msys64\ucrt64\lib
 
-TARGET = wanr2k
+TARGET = test
 
 $(TARGET): $(OBJECTS)
 	$(FC) -o $@   $^ $(LIBDIR)\liblapack.a $(LIBDIR)\libblas.a
@@ -16,5 +16,7 @@ $(TARGET): $(OBJECTS)
 clean:
 	rm -f $(OBJECTS) $(TARGET)
 
-test:  hamtools.o test.o
-	$(FC) -o test test.o hamtools.o $(LIBDIR)\liblapack.a $(LIBDIR)\libblas.a 
+
+wanr2k: wanr2k.o
+	$(FC) -o wanr2k wanr2k.o $(LIBDIR)\liblapack.a $(LIBDIR)\libblas.a 
+

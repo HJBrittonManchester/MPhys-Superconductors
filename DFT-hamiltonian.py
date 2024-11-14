@@ -15,14 +15,23 @@ MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
 k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
-DEBYE_ENERGY = 0.022  # eV
+DEBYE_ENERGY = 0.01  # eV
 FERMI_ENERGY = 0.915  # eV
 
 
 # Simulation settings
-RESOLUTION = 100
-NUM_FREQ = 500
+RESOLUTION = 800
+NUM_FREQ = 1000
 PRESELECTION_BOXSIZE = 0.22  # set to -1 to use full area but, 0.22 works well
+BRACKET_TOLERANCE = 1e-4
+MAX_BRACKET_STEPS = 25
+
+TEMP_START = 6.45
+TEMP_STOP = 0.5
+TEMP_STEPS = 10
+
+H_U_START = 50
+H_L_START = 0
 
 
 def get_hamr():
@@ -105,19 +114,51 @@ def find_hamk(k, hamr, ndeg, rvec):
 
 
 def epsilon(hamk):
-    return np.array([np.real_if_close(np.linalg.eig(hamk[:, :, i])[0]) for i in range(hamk.shape[2])], dtype=float)
+    eigs = np.array([np.real_if_close(np.linalg.eig(hamk[:, :, i])[0])
+                    for i in range(hamk.shape[2])], dtype=float)
+    return eigs
 
 
-def vary_ham(ham, ef=FERMI_ENERGY, H=0, theta=0, phi=np.pi / 2):
+def projection_z(hamk, band=0):
+    eigvecs = np.array([np.linalg.eig(hamk[:, :, i])[1]
+                        for i in range(hamk.shape[2])], dtype=complex)
+
+    proj = eigvecs[:, :, 0] * eigvecs[:, :, 0].conj() - \
+        eigvecs[:, :, 1] * eigvecs[:, :, 1].conj()
+
+    return proj
+
+
+def projection_x(hamk, band=0):
+    eigvecs = np.array([np.linalg.eig(hamk[:, :, i])[1]
+                        for i in range(hamk.shape[2])], dtype=complex)
+
+    proj = eigvecs[:, :, 0] * eigvecs[:, :, 1].conj() + \
+        eigvecs[:, :, 1] * eigvecs[:, :, 0].conj()
+
+    return proj
+
+
+def projection_y(hamk, band=0):
+    eigvecs = np.array([np.linalg.eig(hamk[:, :, i])[1]
+                        for i in range(hamk.shape[2])], dtype=complex)
+
+    proj = 1j * eigvecs[:, :, 0] * eigvecs[:, :, 1].conj() - \
+        eigvecs[:, :, 1] * eigvecs[:, :, 0].conj() * 1j
+
+    return proj
+
+
+def vary_ham(ham, ef=FERMI_ENERGY, H=0, theta=np.pi / 2, phi=0):
 
     new_ham = np.zeros_like(ham, dtype=np.complex128)
-    new_ham[0, 0, :] = ham[0, 0, :] - ef - H * MU_B * np.cos(phi)
-    new_ham[1, 1, :] = ham[1, 1, :] - ef + H * MU_B * np.cos(phi)
+    new_ham[0, 0, :] = ham[0, 0, :] - ef - H * MU_B * np.cos(theta)
+    new_ham[1, 1, :] = ham[1, 1, :] - ef + H * MU_B * np.cos(theta)
 
     new_ham[0, 1, :] = ham[0, 1, :] - H * MU_B * \
-        complex(np.cos(theta), np.sin(theta)) * np.sin(phi)
+        complex(np.cos(phi), np.sin(phi)) * np.sin(theta)
     new_ham[1, 0, :] = ham[1, 0, :] - H * MU_B * \
-        complex(np.cos(theta), -np.sin(theta)) * np.sin(phi)
+        complex(np.cos(phi), -np.sin(phi)) * np.sin(theta)
 
     return new_ham
 
@@ -171,61 +212,150 @@ def plot_linearised_map(l_map):
         int(np.sqrt(l_map.size)), int(np.sqrt(l_map.size)))
     c = plt.pcolor(square_map, shading='auto')
     plt.colorbar(c)
-    plt.contourf(square_map,
-                 levels=[-0.022, 0.022], colors='red', alpha=0.5)
+    # plt.contourf(square_map,
+    #             levels=[-0.022, 0.022], colors='red', alpha=0.5)
     plt.show
 
 
-hamr, ndeg, rvec = get_hamr()  # Read in the real-space hamiltonian
+def gen_unperturbed_hamiltonians():
 
-hamk_P = find_hamk(get_k(), hamr, ndeg, rvec)  # FT the hamiltonian
+    hamr, ndeg, rvec = get_hamr()  # Read in the real-space hamiltonian
 
-hamk_pert_P = vary_ham(hamk_P)  # Adjust the fermi level
+    hamk_P = find_hamk(get_k(), hamr, ndeg, rvec)  # FT the hamiltonian
+
+    hamk_pert_P = vary_ham(hamk_P)  # Adjust the fermi level
+
+    # Find the mean of energy eigen values
+    energy = epsilon(hamk_pert_P).mean(axis=1)
+
+    #proj_z = projection_z(hamk_pert_P)
+    #proj_z = np.abs(proj_z[:, 0] - proj_z[:, 1])
+
+    # print(eigvecs)
+
+    # plot_linearised_map(proj_z)
+
+    # Find the points within the Debye energy of fermi surface
+    significant_kpoints_indices = np.where(abs(energy) < DEBYE_ENERGY)
+
+    # Find -ve ham to significant k points
+    significant_kpoints = get_k()[:, significant_kpoints_indices][:, 0, :]
+    hamk_N = find_hamk(-significant_kpoints, hamr, ndeg, rvec)
+
+    # correct +ve ham to significant k points
+    hamk_P = hamk_P[:, :, significant_kpoints_indices][:, :, 0]
+    hamk_pert_P = vary_ham(hamk_P)  # reset +ve
+    hamk_pert_N = vary_ham(hamk_N)
+
+    v = 1/susc(hamk_pert_N, hamk_pert_P, 6.5)
+
+    return hamk_P, hamk_N, v
 
 
-# Find the mean of energy eigen values
-energy = epsilon(hamk_pert_P).mean(axis=1)
+def delta(T,  v, hamk_P, hamk_N, H=0, phi=0, theta=np.pi/2):
+
+    hamk_pert_N = vary_ham(hamk_N, FERMI_ENERGY, H, theta=theta, phi=phi)
+
+    hamk_pert_P = vary_ham(hamk_P, FERMI_ENERGY, H, theta=theta, phi=phi)
+
+    return 1 - v * susc(hamk_pert_N, hamk_pert_P, T)
 
 
-# plot_linearised_map(energy)
+def braket(ham_P, ham_N, T, v, start_H_U=H_U_START, start_H_L=H_L_START,
+           theta=np.pi/2, phi=0., tol=BRACKET_TOLERANCE):
+
+    # Larger H => +ve Delta
+    # Smaller H => -ve Delta
+    iterations = 0
+
+    current_H_U = start_H_U
+    current_H_L = start_H_L
+
+    current_delta_U = delta(T, v,  ham_P, ham_N, H=current_H_U)
+    current_delta_L = delta(T, v,  ham_P, ham_N, H=current_H_L)
+
+    # print("Δ_max = {}, Δ_min = {}".format(
+    #     current_delta_U, current_delta_L))
+
+    if current_delta_U < 0:
+        print("Upper H too low")
+        return start_H_L
+    elif current_delta_L > 0:
+        print("Lower H too high")
+        return 0
+
+    old_H_U = 100
+    old_H_L = 0
+
+    while abs(current_delta_L) > tol and abs(current_delta_U) > tol and iterations < MAX_BRACKET_STEPS:
+        # print("Δ_max = {}, Δ_min = {}".format(
+        #     current_delta_U, current_delta_L))
+
+        if current_delta_L > 0 and current_delta_U > 0:
+            print("both +ve sign")
+
+            current_H_U = current_H_L
+            current_H_L = old_H_L
+
+            # reset upper
+            current_delta_U = current_delta_L
+            # recalculate lower
+            delta(T, v,  ham_P, ham_N, H=current_H_L)
+
+        elif current_delta_L < 0 and current_delta_U < 0:
+            print("both -ve sign")
+
+            current_H_L = current_H_U
+            current_H_U = old_H_U
+
+            # reset lower
+            current_delta_L = current_delta_U
+            # recalculate Upper
+            current_delta_U = delta(T, v,  ham_P, ham_N, H=current_H_U)
+
+        elif abs(current_delta_L) > abs(current_delta_U):
+            old_H_L = current_H_L
+            current_H_L = (current_H_L + current_H_U) / 2
+            current_delta_L = delta(T, v,  ham_P, ham_N, H=current_H_L)
+
+        else:
+            old_H_U = current_H_U
+            current_H_U = (current_H_L + current_H_U) / 2
+            current_delta_U = delta(T, v,  ham_P, ham_N, H=current_H_U)
+
+        iterations += 1
+
+    if iterations == MAX_BRACKET_STEPS:
+        print("Reached max iterations")
+
+    if abs(current_delta_L) < tol:
+        # print(current_delta_L)
+        return current_H_L
+    else:
+        # print(current_delta_U)
+        return current_H_U
 
 
-# Find the points within the Debye energy of fermi surface
-significant_kpoints_indices = np.where(abs(energy) < 0.022)
-
-
-# Find -ve ham to significant k points
-significant_kpoints = get_k()[:, significant_kpoints_indices][:, 0, :]
-hamk_N = find_hamk(-significant_kpoints, hamr, ndeg, rvec)
-
-
-# correct +ve ham to significant k points
-hamk_P = hamk_P[:, :, significant_kpoints_indices][:, :, 0]
-hamk_pert_P = vary_ham(hamk_P)  # reset +ve
-hamk_pert_N = vary_ham(hamk_N)
-
-
-v = 1/susc(hamk_pert_N, hamk_pert_P, 6.5)
-print(v)
-
-critical_field = []
-for t in range(10):
-    temp = 6.2 - t * 0.6
+def bracketing(ham_P, ham_N, v):
+    T_array = []
     H_array = []
-    delta_array = []
-    for h_index in range(200):
-        # print(t*np.pi/20)
-        hamk_pert_N = vary_ham(hamk_N, FERMI_ENERGY,
-                               h_index,  np.pi * 15 / 20)
+    for t_index in range(TEMP_STEPS):
+        temp_T = TEMP_START - (TEMP_START - TEMP_STOP) / \
+            (TEMP_STEPS-1) * t_index
+        T_array.append(temp_T)
 
-        hamk_pert_P = vary_ham(hamk_P, FERMI_ENERGY,
-                               h_index, t * np.pi * 15 / 20)
+        H_array.append(braket(ham_P.copy(), ham_N.copy(), temp_T, v))
 
-        delta_array.append(1 - v * susc(hamk_pert_N, hamk_pert_P, temp))
-        # print(delta_array[-1])
-        H_array.append(h_index)
-    # print(min(abs(np.array(delta_array))))
-    #print(t * np.pi / 20)
-    critical_field.append(
-        np.where(abs(np.array(delta_array)) == min(abs(np.array(delta_array))))[0][0])
-plt.plot(critical_field)
+    print(T_array)
+    print(H_array)
+    plt.plot(T_array, H_array)
+
+
+def main():
+    ham_P, ham_N, v = gen_unperturbed_hamiltonians()
+    print(v)
+
+    bracketing(ham_P, ham_N, v)
+
+
+main()

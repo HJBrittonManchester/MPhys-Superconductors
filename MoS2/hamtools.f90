@@ -3,12 +3,12 @@ module hamtools
 
   !---------- user defined parameters
   character(len=80):: prefix="MoS2"
-  integer*4:: resolution= 1000
+  integer*4:: resolution= 400
   real*8,parameter::ef= .915d0 ! original value is 4.18903772 ! Fermi energy
   real*8, parameter::kb = 8.6173d-5
   real*8, parameter::mub = 5.7883817982d-5
-  integer, parameter:: freqmax = 1000 !
-  real*8, parameter::threshold = 0.01
+  integer, parameter:: freqmax = 2000 !
+  real*8, parameter::threshold = 0.022
 
   real*8, parameter:: pi2 = 4.0d0*atan(1.0d0)*2.0d0
 
@@ -89,7 +89,7 @@ contains
     hamk(:,2,2) = hamk(:,2,2) - dcmplx(ef,0d0)
 
     !------- add H field term  along x axis
-    hamk(:, 1, 2) = hamk(:,1,2) - H * mub
+    hamk(:, 1, 2) = hamk(:,1,2) -  H * mub
     hamk(:, 2, 1) = hamk(:,2,1) - H * mub
     
   end function hamk
@@ -233,8 +233,8 @@ contains
     complex*16 gfp(nk,2,2), gfn(nk,2,2)
 
     
-    Hamp = toyHamK(k, nk, H)
-    Hamn = toyHamK(-k, nk, H)
+    Hamp = hamk(k, nk, H)
+    Hamn = hamk(-k, nk, H)
 
     susc = 0d0
     mcount = 0
@@ -281,7 +281,7 @@ contains
       call zheev('V','U',nb,Ham(ki,:,:),nb,ene(:,ki),work,lwork,rwork,info)
     enddo
 
-    write(*,*)ene
+    !write(*,*)ene
 
     !------- get average of all energy bands at k-point
     epsilonk = 0d0
@@ -306,6 +306,7 @@ contains
         isize = size(list)/3
         allocate(clist(3,isize+1))
         do i=1,isize          
+
         clist(:,i) = list(:,i)
         end do
         clist(:,isize+1) = element

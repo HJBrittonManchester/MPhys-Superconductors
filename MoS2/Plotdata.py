@@ -8,20 +8,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 energyFile = "energy.dat"
-kpointFile = "kpoints.dat"
+#kpointFile = "kpoints.dat"
 bandFile = "band.dat"
-enFile = "en.txt"
+#enFile = "en.txt"
 
 energydata = np.genfromtxt(energyFile, dtype=float)
-endata = np.genfromtxt(enFile, delimiter = ",", dtype=float)
+#endata = np.genfromtxt(enFile, delimiter=",", dtype=float)
 banddata = np.genfromtxt(bandFile, delimiter="   ", dtype=float)
 
-kpointdata = np.genfromtxt(kpointFile, dtype=float)
+#kpointdata = np.genfromtxt(kpointFile, dtype=float)
 
 resolution = energydata.shape[0]
 
 #kpoints = kpointdata.reshape((resolution, resolution, 3))
-
 
 
 def plot_color():
@@ -32,10 +31,12 @@ def plot_color():
 
     plt.figure()
 
-    c = plt.pcolormesh(A, B, energydata -endata, shading='auto')
-    plt.contourf(A, B, energydata , levels=[-0.022, 0.022], colors='red', alpha=0.5)
-    plt.contourf(A, B, endata , levels=[-0.022, 0.022], colors='black', alpha=0.5)
-    
+    c = plt.pcolormesh(A, B, energydata, shading='auto')
+    plt.contourf(A, B, energydata,
+                 levels=[-0.022, 0.022], colors='red', alpha=0.5)
+    # plt.contourf(A, B, endata, levels=[-0.022,
+    #             0.022], colors='black', alpha=0.5)
+
     plt.colorbar(c)
     plt.plot(1/3, 1/3, 'wx')
     plt.plot(2 * 1/3, 2 * 1/3, 'wx')
@@ -52,4 +53,11 @@ def plot_band():
 
 def plot_phase():
     phasedata = np.genfromtxt("phase.dat")
-    plt.plot(phasedata[:,1], phasedata[:,0])
+    toyphasedata = np.genfromtxt("toy_phase.dat")
+
+    plt.plot(phasedata[:, 1], phasedata[:, 0], label="Realistic")
+    plt.plot(toyphasedata[:, 1], toyphasedata[:, 0], label="Toy")
+    plt.xlabel("T / K")
+    plt.ylabel(r"$H_{C2}$ / T")
+    plt.title("Upper critical field as a  function of temperature")
+    plt.legend()

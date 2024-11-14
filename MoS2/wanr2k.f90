@@ -2,8 +2,8 @@
       Implicit None
 !--------to be midified by the usere
       character(len=80):: prefix="MoS2"
-      integer,parameter::nkpath=4,np=100
-      real*8,parameter::ef= 0.9 !4.18903772
+      integer,parameter::nkpath=4,np=10
+      real*8,parameter::ef= 0.915 !4.18903772
 !------------------------------------------------------
       integer*4 ik,ikmax,ir
       real*8 kz
@@ -17,7 +17,7 @@
       real*8,allocatable:: rvec(:,:),ene(:,:),rwork(:)
       integer*4,allocatable:: ndeg(:)
       complex*16,allocatable:: Hk(:,:),Hamr(:,:,:),work(:)
-      complex*16 temp1,temp2
+      real*8 temp_proj_z,temp_proj_x
 !------------------------------------------------------
       write(hamil_file,'(a,a)')trim(adjustl(prefix)),"_hr.dat"
       write(nnkp,'(a,a)')      trim(adjustl(prefix)),".nnkp"
@@ -70,7 +70,7 @@
 !      write(*,*)klist
       klist=klist*pi2
 
-      !write(*,*)klist
+      write(*,*)klist(:,:np+1)
 
 !------read H(R)
       open(99,file=trim(adjustl(hamil_file)),err=444)
@@ -110,6 +110,14 @@
          HK(2,2) = HK(2,2) - ef
 
          call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
+         
+         if ( k == nk / 2d0 ) then
+            temp_proj_z = Hk(1,1)*conjg(Hk(1,1)) - Hk(2,1)*conjg(Hk(2,1)) - Hk(2,2)*conjg(Hk(2,2)) + Hk(1,2)*conjg(Hk(1,2))  
+            temp_proj_x = Hk(1,1)*conjg(Hk(2,1)) + Hk(2,1)*conjg(Hk(1,1)) - Hk(2,2)*conjg(Hk(1,2)) - Hk(1,2)*conjg(Hk(2,2)) 
+            write(*,*)temp_proj_z
+            write(*,*)temp_proj_x
+         end if
+
          !write(*,*)Hk
          
       enddo
