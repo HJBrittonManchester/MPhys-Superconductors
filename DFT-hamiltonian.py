@@ -6,6 +6,7 @@ Created on Tue Nov 12 11:12:32 2024
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 import scipy.constants
 
 
@@ -21,7 +22,7 @@ FERMI_ENERGY = 0.915  # eV
 
 
 # Simulation settings
-RESOLUTION = 50
+RESOLUTION = 1000
 NUM_FREQ = 500
 PRESELECTION_BOXSIZE = -1  # 0.22  # set to -1 to use full area but, 0.22 works well
 BRACKET_TOLERANCE = 1e-4
@@ -150,6 +151,11 @@ def projection_z(hamk, band=0):
 
     return proj
 
+def get_eig_vec(hamk):
+    return  np.array([np.linalg.eigh(hamk[:, :, i])[1]
+                        for i in range(hamk.shape[2])], dtype=complex)
+    
+
 
 def projection_x(hamk, band=0):
     eigvecs = np.array([np.linalg.eigh(hamk[:, :, i])[1]
@@ -213,10 +219,10 @@ def find_hamk(k, hamr, ndeg, rvec):
 
             # Compute the phase factor
             # Ensure the correct sign in the phase
-            phase = -np.dot(k[:, i], rvec[:, j])
+            phase = np.dot(k[:, i], rvec[:, j])
 
             # Add the contribution to the Hamiltonian in k-space
-            ham[:, :, i] += hamr[:, :, j] * np.exp(1j * phase) / ndeg[j]
+            ham[:, :, i] += hamr[:, :, j] * complex(np.cos(phase), -np.sin(phase)) / ndeg[j]
 
     return ham
 
@@ -421,22 +427,65 @@ def bracketing(ham_P, ham_N, v):
 
 
 def main():
-    ham_P, ham_N, v = find_v()
+    #ham_P, ham_N, v = find_v()
     # print(v)
 
     # bracketing(ham_P, ham_N, v)
     # e = get_bands_on_path(path=['G', 'M', 'K', 'G'])
     # ks = get_abs_k_path()
+    
+    hr_obs = get_hamr()
+    
+    k = get_k_path(path=['K','G'])
+    
+    hamk = find_hamk(k, *hr_obs)
+    
+    ham_P =  vary_ham(hamk)
 
-    e = projection_z(vary_ham(ham_P))
 
-    e = e[:, 0]
+    e = epsilon(ham_P)
+    e = e
+    
+    x = np.linspace(0, 1, len(e[:,0]))
+    
+    eVecs = get_eig_vec(ham_P)
+    new_eVecs = eVecs.copy()
+    
+    for i in range(1,len(eVecs)):
+        overlap_same = np.dot(np.conj(eVecs[i-1, :, 0]), eVecs[i, :, 0],)
+        overlap_diff = np.dot(np.conj(eVecs[i-1, :, 0]), eVecs[i, :, 1])
+        
+        print(overlap_same)
+        
+        if overlap_diff > overlap_same:
+            temp = eVecs[i,:,0].copy()
+            new_eVecs[i,:, 0] = eVecs[i,:,1].copy()
+            new_eVecs[i,:, 1] = temp.copy()
 
-    e = np.real(e.reshape(RESOLUTION, RESOLUTION))
+    upper_ele = np.abs(new_eVecs[:,0,:])
+    
+    #print(upper_ele)
 
-    c = plt.pcolor(e)
-    plt.colorbar(c)
-    # plt.plot(e)
+
+    pr_z = projection_z(vary_ham(ham_P))
+    pr_z = np.real(pr_z)
+    
+    pr_x = projection_x(vary_ham(ham_P))
+    pr_x = np.real(pr_x)
+    
+    cmap = plt.cm.viridis
+    norm = plt.Normalize(pr_z.min(), pr_z.max())
+
+    
+    for i in range(len(e[0])):
+
+        colors = cmap(norm(pr_z[:,i]))
+                
+        plt.scatter(x, e[:,i], c= colors)
+        plt.plot(x,e[:,i], 'k')
+        plt.plot(x, upper_ele)
+    plt.colorbar()
+
 
 
 main()
