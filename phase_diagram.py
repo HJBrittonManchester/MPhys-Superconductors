@@ -265,21 +265,21 @@ def Det(kx, ky, omega, H_mag, theta, phi):
     Hz = H_mag*np.cos(theta)
 
     return (1j*omega - epsilon(kx, ky))**2 - (alpha_zeeman*g_zeeman(kx, ky, beta)[2] - MU_B*Hz)**2 - \
-        ((MU_B*Hx - alpha_rashba*g_rashba(kx, ky, beta)
-         [0])**2 - (MU_B*Hy + alpha_rashba*g_rashba(kx, ky, beta)[1])**2)
+        (MU_B*Hx - alpha_rashba*g_rashba(kx, ky, beta)
+         [0])**2 - (MU_B*Hy + alpha_rashba*g_rashba(kx, ky, beta)[1])**2
 
 
 def GF_up_up(kx, ky, omega, H_mag, theta, phi):
-    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (1j*omega - epsilon(kx, ky) + alpha_zeeman*g_zeeman(kx, ky, beta)[2] + MU_B*H_mag*np.cos(theta))
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (1j*omega - epsilon(kx, ky) - alpha_zeeman*g_zeeman(kx, ky, beta)[2] + MU_B*H_mag*np.cos(theta))
 
 
 def GF_down_down(kx, ky, omega, H_mag, theta, phi):
-    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (1j*omega - epsilon(kx, ky) - alpha_zeeman * g_zeeman(kx, ky, beta)[2] + MU_B*H_mag*np.cos(theta))
+    return 1/Det(kx, ky, omega, H_mag, theta, phi) * (1j*omega - epsilon(kx, ky) + alpha_zeeman * g_zeeman(kx, ky, beta)[2] - MU_B*H_mag*np.cos(theta))
 
 
 def GF_up_down(kx, ky, omega, H_mag, theta, phi):
     return 1/Det(kx, ky, omega, H_mag, theta, phi) * (MU_B*H_mag*np.sin(theta)*np.cos(phi) - alpha_rashba*g_rashba(kx, ky, beta)[0]) \
-        - 1j*(MU_B*H_mag*np.sin(theta)*np.sin(phi) -
+        - 1j*(MU_B*H_mag*np.sin(theta)*np.sin(phi) +
               alpha_rashba*g_rashba(kx, ky, beta)[1])
 
 
