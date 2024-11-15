@@ -35,7 +35,7 @@ V_VAL = -0.34864337758262043
 
 # simulation params
 FREQUENCY_LIMIT = 500
-DEFAULT_N_POINTS = 300
+DEFAULT_N_POINTS = 1000
 
 en = 0
 
@@ -273,8 +273,8 @@ def find_phase_diagram(steps=25, theta=np.pi/2):
 def H_angle(steps, T, angle_range):
     values = []
 
-    H_upper_estimate = 15
-    H_lower_estimate = 0.01
+    H_upper_estimate = 20
+    H_lower_estimate = 0.001
 
     # theta = np.pi/2  # going from -5 -> 5 degrees
 
@@ -314,7 +314,7 @@ def tinkham_angle_model(theta, Hc2_par, Hc2_perp):
     return first_term + second_term
 
 
-def plot_H_angle(t, Hc2_par, Hc2_perp, plot_fit=False):
+def plot_H_angle(t, Hc2_par=0, Hc2_perp=0, plot_fit=False):
 
     fig, ax = plt.subplots(dpi=400)
 
@@ -341,7 +341,7 @@ def plot_H_angle(t, Hc2_par, Hc2_perp, plot_fit=False):
 def perp_gl_model(T):
 
     flux_quantum = h/(2*e)
-    gl_length = 8e-9
+    gl_length = 4.8e-9 # from hc2 perp fitting
     # d = 1.5e-9
     Tc = 6.5
 
@@ -416,24 +416,29 @@ print(V)
 # print(braket(65, 40, 3))
 
 # test_N_convergence(3)
-
-theta_linspace = np.linspace(np.pi/2 - np.pi/180, np.pi/2 + np.pi/180, 15)
+"""
+theta_linspace = np.linspace(np.pi/2 - np.pi/180, np.pi/2 + np.pi/180, 10)
 Hc2_vals = []
 count = 1
 
 for theta_i in theta_linspace:
-    r_i = find_phase_diagram(15, theta=theta_i)
+    r_i = find_phase_diagram(10, theta=theta_i)
     Hc2_i = plot_phase_diagram_fitted(r_i, True, fit_range=3)[0][0]
-    print("Value ", count, "out of ", len(theta_linspace), [theta_i, Hc2_i])
+    print("Value", count, "out of", len(theta_linspace), [theta_i, Hc2_i])
     Hc2_vals.append(Hc2_i)
     count += 1
 
+Hc2_vals = [63.16972060803493,
+ 63.16972060803493,
+ 63.16972060803493,
+ 63.310322077935226,
+ 63.310322077935226,
+ 63.310322077935226,
+ 63.310322077935226,
+ 63.16972060803493,
+ 63.16972060803493,
+ 63.16972060803493]
 print(Hc2_vals)
-Hc2_vals = [66.63956486415506, 66.7072829408943, 66.77361625526304, 66.77361625526304,
-            66.77361625526304, 66.81074554669124, 66.81074554669124, 66.81074554669124, 66.81074554669124,
-            66.81074554669124, 66.77361625526304, 66.77361625526304, 66.77361625526304, 66.7072829408943, 66.63956486415506]
-# Hc2_vals = [[70.03770703089634], [71.87639493668294], [73.30408423838117], [74.32077493650428], [74.79667137059528], [
-#   74.79667137059528], [74.32077493650428], [73.30408423838117], [71.87639493668294], [70.03770703089634]]
 
 fig, ax = plt.subplots(dpi=400)
 
@@ -442,13 +447,16 @@ ax.plot(theta_linspace, Hc2_vals, 'k-')
 Hc2_perp = perp_gl_model(0)
 # Hc2_par =
 
+ax.plot(theta_linspace, gl_angle_model(theta_linspace, Hc2_vals[len(Hc2_vals)//2], Hc2_perp), 'm--')
+ax.plot(theta_linspace, tinkham_angle_model(theta_linspace, Hc2_vals[len(Hc2_vals)//2], Hc2_perp), 'c--')
+
 for i in range(len(Hc2_vals)):
     print(Hc2_vals[i])
     ax.plot(theta_linspace, gl_angle_model(
         theta_linspace, Hc2_vals[i], Hc2_perp), 'm--')
     ax.plot(theta_linspace, tinkham_angle_model(
         theta_linspace, Hc2_vals[i], Hc2_perp), 'c--')
-
+"""
 # r = find_phase_diagram(20, theta=np.pi/2 - np.pi/36)
 # print(r)
 
@@ -460,10 +468,11 @@ for i in range(len(Hc2_vals)):
 #Hc2_par = plot_phase_diagram_fitted(r, True)[0][0]
 
 # d = plot_phase_diagram_fitted(r, True)[0][0]
-Hc2_perp = perp_gl_model(0)
+#Hc2_perp = perp_gl_model(0)
 #Hc2_par = par_gl_model(0, d)
+
+t = H_angle(40, 6.4, [0, 180])  # same shape, peak is a little above 90 ?
 """
-# t = H_angle(25, 6.4, [1, 110])  # same shape, peak is a little above 90 ?
 t = np.array([[2.17652344,   1.],
               [2.17652344,   5.54166667],
               [2.23507812,  10.08333333],
@@ -489,9 +498,11 @@ t = np.array([[2.17652344,   1.],
               [6.68523438, 100.91666667],
               [5.86546875, 105.45833333],
               [5.1628125, 110.]])
+"""
 print(t)
-Hc2_par = 8.125
-plot_H_angle(t, Hc2_par, Hc2_perp, plot_fit=True)
+#Hc2_par = 8.125
+plot_H_angle(t)
+
 """
 # superconducting thickness = 2.10556751e-09
 
@@ -504,3 +515,4 @@ print("Runtime: {} s".format(time.time() - time_0))
 
 # intro to superconductivity textbook pg 321. look at model for Hc2(theta)
 # derive the susceptibility using prb paper for out-of-plane H field
+"""
