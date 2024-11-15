@@ -4,18 +4,21 @@ Program test
 
   implicit none
 
+  real*8, parameter::test_phi = 0 !pi2 / 4d0
+
   ! define variables
-  real*8, allocatable:: kpoints(:,:), energy(:), validkpoints(:,:), real_k(:,:)
+  real*8, allocatable:: kpoints(:,:), energy(:,:), validkpoints(:,:), real_k(:,:), energy_band(:,:)
   complex*16, allocatable:: ham(:,:,:,:), gf(:,:,:,:), newham(:,:,:)
-  real*8 T, chi0, v, Hu, Hl, deltaU, deltaL, Hprev, deltaPrev
+  real*8 T, chi0, v, Hu, Hl, deltaU, deltaL, Hprev, deltaPrev, kpath(3,nklist)
   integer ki, nk, it, steps
   character(len=16) efmt, kfmt
   character(len=4) intstring
   real*8 singlek(3), tolerance
-  complex*16 oldsampleham(2,2), sampleham(2,2)
+  complex*16 oldsampleham(2,2), sampleham(2,2), temp_hamk(nklist, 2,2)
 
-  allocate(kpoints(3,resolution*resolution),energy(resolution*resolution), real_k(3, resolution*resolution))
+  allocate(kpoints(3,resolution*resolution),energy(2,resolution*resolution), real_k(3, resolution*resolution))
   allocate(ham(resolution,resolution,2,2),gf(resolution,resolution,2,2),newham(resolution*resolution,2,2))
+  allocate(energy_band(2,nklist))
 
   tolerance = 1d-4
 
@@ -34,8 +37,24 @@ Program test
   kpoints = karray()
 
   !write(*,*) kpoints(1,:,1)
+  energy = epsilonk(hamk(kpoints, resolution*resolution, 0d0, pi2 / 4d0, test_phi),resolution*resolution)
 
-  energy = epsilonk(hamk(kpoints, resolution*resolution, 0d0))
+  open(101,file="energy.dat")
+  write(101,efmt) energy(:,:)
+  close(101)
+
+
+  kpath = klist()
+  write(*,*)"b"
+  energy_band = epsilonk(hamk(kpath,nklist, 0d0, pi2/ 4d0, test_phi), nklist)
+
+  write(*,*)size(energy_band)
+
+  open(101,file="band.dat")
+  write(101,*) energy_band(1,:)
+  write(101,*) energy_band(2,:)
+  close(101)
+
 
   !write(*,*)kpoints(:,resolution*resolution)
 
@@ -47,31 +66,35 @@ Program test
   !write(*,*)real_k(:,resolution*resolution)
 
   open(100,file="kpoints.dat")
-  !write(100,kfmt) real_k(:,:)
+  write(100,*) kpath(:,:)
   close(100)
 
   !energy = ep(real_k,resolution*resolution)
-  open(101,file="energy.dat")
-  !write(101,efmt) energy(:)
-  close(101)
+
 
   !write(*,*)energy
 
   !----- find valid kpoints
   nk = 0
   do ki = 1, resolution*resolution
-    if ( abs(energy(ki)) < threshold ) then
+    if ( abs((energy(1,ki) + energy(2,ki))/2) < threshold ) then
       nk = nk +1
       call AddToList(validkpoints,kpoints(:,ki))
     end if
   end do
 
+  
+
   write(*,*)nk
 
-  chi0 = susc(6.5d0,0d0,nk,validkpoints)
+  chi0 = susc(6.5d0,0d0,  pi2 / 4d0, test_phi, nk,validkpoints)
 
   v = 1/chi0
   write(*,*)v
+
+
+
+
 
 
   !!! brackets
@@ -88,8 +111,8 @@ Program test
     Hl = -5d0
 
     !write(*,*) 
-    deltaL = 1 - v *susc(T, Hl, nk, validkpoints)
-    deltaU = 1 - v *susc(T, Hu, nk, validkpoints)
+    deltaL = 1 - v *susc(T, Hl, pi2 / 4d0, test_phi, nk, validkpoints)
+    deltaU = 1 - v *susc(T, Hu, pi2 / 4d0, test_phi, nk, validkpoints)
     deltaPrev = 0.0d0
     Hprev = 0d0
 
@@ -137,7 +160,7 @@ Program test
 
       !----- find new Hu
       Hu = (Hu + Hl) / 2d0
-      deltaU = 1- v* susc(T,Hu,nk,validkpoints)
+      deltaU = 1- v* susc(T,Hu, pi2 / 4d0, test_phi, nk,validkpoints)
 
 
     elseif(deltaL+deltaU < 0) then 
@@ -147,7 +170,7 @@ Program test
 
       !----- find new Hu
       Hl = (Hu + Hl) / 2d0
-      deltaL = 1 - v* susc(T,Hl,nk,validkpoints)
+      deltaL = 1 - v* susc(T,Hl, pi2 / 4d0, test_phi, nk,validkpoints)
 
     end if
 

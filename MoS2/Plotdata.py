@@ -8,17 +8,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 energyFile = "energy.dat"
-#kpointFile = "kpoints.dat"
+kpointFile = "kpoints.dat"
 bandFile = "band.dat"
 #enFile = "en.txt"
 
 energydata = np.genfromtxt(energyFile, dtype=float)
 #endata = np.genfromtxt(enFile, delimiter=",", dtype=float)
-banddata = np.genfromtxt(bandFile, delimiter="   ", dtype=float)
+banddata = np.loadtxt(bandFile, dtype=float)
 
-#kpointdata = np.genfromtxt(kpointFile, dtype=float)
+kpointdata = np.genfromtxt(kpointFile, dtype=float)
+kx = kpointdata[::3]
+ky = kpointdata[1::3]
 
-resolution = energydata.shape[0]
+#resolution = energydata.shape[0]
 
 #kpoints = kpointdata.reshape((resolution, resolution, 3))
 
@@ -32,8 +34,8 @@ def plot_color():
     plt.figure()
 
     c = plt.pcolormesh(A, B, energydata, shading='auto')
-    plt.contourf(A, B, energydata,
-                 levels=[-0.022, 0.022], colors='red', alpha=0.5)
+    # plt.contourf(A, B, energydata,
+    #             levels=[-0.022, 0.022], colors='red', alpha=0.5)
     # plt.contourf(A, B, endata, levels=[-0.022,
     #             0.022], colors='black', alpha=0.5)
 

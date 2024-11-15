@@ -3,14 +3,18 @@ module hamtools
 
   !---------- user defined parameters
   character(len=80):: prefix="MoS2"
-  integer*4:: resolution= 400
+  integer*4:: resolution= 200
   real*8,parameter::ef= .915d0 ! original value is 4.18903772 ! Fermi energy
   real*8, parameter::kb = 8.6173d-5
   real*8, parameter::mub = 5.7883817982d-5
-  integer, parameter:: freqmax = 2000 !
-  real*8, parameter::threshold = 0.022
+  integer, parameter:: freqmax = 1000 !
+  real*8, parameter::threshold =0.022
 
   real*8, parameter:: pi2 = 4.0d0*atan(1.0d0)*2.0d0
+
+  !-------------- For the bands
+  integer,parameter::nkpath=4,np=100
+  integer*4,parameter::nklist=(nkpath-1)*np+1
 
   !----------- toy hamiltonian parameters
   real*8, parameter:: t1 = 0.146d0
@@ -25,6 +29,7 @@ module hamtools
   real*8, parameter:: beta = 2.75681159d1
 
   real*8, parameter:: thekpoint(3) = [0d0,2d0 / 3d0 * pi2, 0d0]
+
 
 
 
@@ -65,9 +70,67 @@ contains
     karray = karray * pi2
   end function karray
 
-  function hamk(k, nk, H)
+  function klist()
+
+    character(len=80) nnkp,line
+    real*8 klist(3,1:nklist),xk(nklist),kpath(3,np),bvec(3,3),ktemp1(3),ktemp2(3),xkl(nkpath), jk
+    real*8,parameter:: third = 1d0 / 3d0
+    integer i, j, k
+    character(len=30)::klabel(nkpath)
+
+
+
+    write(nnkp,'(a,a)')trim(adjustl(prefix)),".nnkp"
+
+!---------------  reciprocal vectors
+    open(98,file=trim(adjustl(nnkp)))
+111   read(98,'(a)')line
+    if(trim(adjustl(line)).ne."begin recip_lattice") goto 111
+    
+    read(98,*)bvec
+!---------------kpath
+    data kpath(:,1) /     0.0d0,      0.0d0,    0.0d0/  !G
+    data kpath(:,2) /     0.5d0,      0.0d0,    0.0d0/  !M
+    data kpath(:,3) /     third,      third,    0.0d0/  !K
+    data kpath(:,4) /     0.0d0,      0.0d0,    0.0d0/  !G
+
+
+    data klabel     /'G','M','K','G'/
+
+    ktemp1(:)=(kpath(1,1)-kpath(1,2))*bvec(:,1)+(kpath(2,1)-kpath(2,2))*bvec(:,2)+(kpath(3,1)-kpath(3,2))*bvec(:,3)
+
+!      xk(1)= 0d0 !-sqrt(dot_product(ktemp1,ktemp1))
+    xk(1)= -sqrt(dot_product(ktemp1,ktemp1))
+    xkl(1)=xk(1)
+    
+
+    k=0
+    ktemp1=0d0
+    do i=1,nkpath-1
+     do j=1,np
+      k=k+1
+      jk=dfloat(j-1)/dfloat(np)
+      klist(:,k)=kpath(:,i)+jk*(kpath(:,i+1)-kpath(:,i))
+      ktemp2=klist(1,k)*bvec(:,1)+klist(2,k)*bvec(:,2)+klist(3,k)*bvec(:,3)
+      if(k.gt.1) xk(k)=xk(k-1)+sqrt(dot_product(ktemp2-ktemp1,ktemp2-ktemp1))
+      if(j.eq.1) xkl(i)=xk(k)
+      ktemp1=ktemp2
+     enddo
+    enddo
+    klist(:,nklist)=kpath(:,nkpath)
+    ktemp2=klist(1,nklist)*bvec(:,1)+klist(2,nklist)*bvec(:,2)+klist(3,nklist)*bvec(:,3)
+    xk(nklist)=xk(nklist-1)+sqrt(dot_product(ktemp2-ktemp1,ktemp2-ktemp1))
+    xkl(nkpath)=xk(nklist)
+!      write(*,*)klist
+    klist=klist*pi2
+
+    write(*,*)klist
+
+  end function klist
+
+  function hamk(k, nk, H, theta, phi)
     integer j, i, ki, nk
-    real*8 k(3,nk), phase, H
+    real*8 k(3,nk), phase, H, theta, phi
     complex*16 hamk( nk, 2,2)
 
 
@@ -85,12 +148,12 @@ contains
     enddo
     !------ adjust fermi surface 
 
-    hamk(:,1,1) = hamk(:,1,1) - dcmplx(ef,0d0)
-    hamk(:,2,2) = hamk(:,2,2) - dcmplx(ef,0d0)
+    hamk(:,1,1) = hamk(:,1,1) - dcmplx(ef,0d0) -  H * mub * cos(theta)
+    hamk(:,2,2) = hamk(:,2,2) - dcmplx(ef,0d0) + H * mub * cos(theta)
 
     !------- add H field term  along x axis
-    hamk(:, 1, 2) = hamk(:,1,2) -  H * mub
-    hamk(:, 2, 1) = hamk(:,2,1) - H * mub
+    hamk(:, 1, 2) = hamk(:,1,2) -  H * mub * dcmplx(cos(phi), sin(phi)) * sin(theta)
+    hamk(:, 2, 1) = hamk(:,2,1) - H * mub * dcmplx(cos(phi), -sin(phi)) * sin(theta)
     
   end function hamk
 
@@ -225,16 +288,16 @@ contains
     matsufreq = (2d0*m+1)* pi * (T*kb)
   end function matsufreq
 
-  function susc(T, H, nk, k)
+  function susc(T, H, theta, phi, nk, k)
     complex*16 Hamp(nk,2,2), Hamn(nk,2,2)
-    real*8 T, H, freq
+    real*8 T, H, freq, theta, phi
     real*8 susc, susc_arr(nk), k(3, nk)
     integer m, nk, mcount
     complex*16 gfp(nk,2,2), gfn(nk,2,2)
 
     
-    Hamp = hamk(k, nk, H)
-    Hamn = hamk(-k, nk, H)
+    Hamp = hamk(k, nk, H, theta, phi)
+    Hamn = hamk(-k, nk, H, theta, phi)
 
     susc = 0d0
     mcount = 0
@@ -258,18 +321,18 @@ contains
   end function susc
 
 
-  function epsilonk(ham)
+  function epsilonk(ham, size)
     !----- variables
     real*8, allocatable:: ene(:,:), rwork(:)
-    integer*4  lwork,info
-    real*8 epsilonk(resolution*resolution)
+    integer*4  lwork,info, size
+    real*8 epsilonk(2, size)
     complex*16,allocatable:: work(:)
-    complex*16 Ham(resolution*resolution,nb,nb)
+    complex*16 Ham(size,nb,nb)
     integer ki
 
 
     !------ get hamiltonian
-    allocate(ene(nb,resolution*resolution))
+    allocate(ene(nb,size))
     ene = 0d0
 
     !------- diagonalise
@@ -277,18 +340,24 @@ contains
     lwork=max(1,2*nb-1)
     allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 
-    do ki=1,resolution*resolution
+    do ki=1,size
       call zheev('V','U',nb,Ham(ki,:,:),nb,ene(:,ki),work,lwork,rwork,info)
     enddo
 
-    !write(*,*)ene
+    !------ projections
+    
+
 
     !------- get average of all energy bands at k-point
-    epsilonk = 0d0
 
-    epsilonk = (ene(1,:) + ene(2,:))/2
+    epsilonk = ene
 
   end function epsilonk
+
+
+  function proj_z(eigs)
+
+    end function proj
 
   
  !----------- Must be used for adding vectors to list of vectors

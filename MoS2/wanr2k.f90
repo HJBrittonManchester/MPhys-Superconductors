@@ -67,10 +67,10 @@
       ktemp2=klist(1,nk)*bvec(:,1)+klist(2,nk)*bvec(:,2)+klist(3,nk)*bvec(:,3)
       xk(nk)=xk(nk-1)+sqrt(dot_product(ktemp2-ktemp1,ktemp2-ktemp1))
       xkl(nkpath)=xk(nk)
-!      write(*,*)klist
+      write(*,*)klist
       klist=klist*pi2
 
-      write(*,*)klist(:,:np+1)
+      !write(*,*)klist(:,:np+1)
 
 !------read H(R)
       open(99,file=trim(adjustl(hamil_file)),err=444)
