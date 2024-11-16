@@ -362,6 +362,7 @@ def par_gl_model(T, a):  # d):  # will be optimised
     return a * np.sqrt(1-T/Tc)
 
 
+
 def plot_phase_diagram_fitted(r, plot_fit=False, fit_range=2):
 
     fig, ax = plt.subplots(figsize=(5, 5), dpi=400)
@@ -405,8 +406,8 @@ def plot_phase_diagram_fitted(r, plot_fit=False, fit_range=2):
 time_0 = time.time()
 
 
-V = find_V()
-print(V)
+#V = find_V()
+#print(V)
 
 
 # print(delta(6.3, 0, np.pi/2, 0.))
@@ -416,18 +417,20 @@ print(V)
 # print(braket(65, 40, 3))
 
 # test_N_convergence(3)
-"""
-theta_linspace = np.linspace(np.pi/2 - np.pi/180, np.pi/2 + np.pi/180, 10)
+
+theta_linspace = np.linspace(np.pi/2 - np.pi/3, np.pi/2 + np.pi/3, 15)
 Hc2_vals = []
 count = 1
-
+"""
 for theta_i in theta_linspace:
-    r_i = find_phase_diagram(10, theta=theta_i)
+    r_i = find_phase_diagram(15, theta=theta_i)
     Hc2_i = plot_phase_diagram_fitted(r_i, True, fit_range=3)[0][0]
     print("Value", count, "out of", len(theta_linspace), [theta_i, Hc2_i])
     Hc2_vals.append(Hc2_i)
     count += 1
+"""
 
+"""
 Hc2_vals = [63.16972060803493,
  63.16972060803493,
  63.16972060803493,
@@ -439,31 +442,50 @@ Hc2_vals = [63.16972060803493,
  63.16972060803493,
  63.16972060803493]
 print(Hc2_vals)
+"""
 
-fig, ax = plt.subplots(dpi=400)
+Hc2_vals=[17.714856322672546,
+ 19.459103732784712,
+ 22.031265427499104,
+ 25.897828128527067,
+ 31.844180706856516,
+ 41.2594715112936,
+ 54.73158782686826,
+ 63.76399756299946,
+ 54.73158782686826,
+ 41.2594715112936,
+ 31.844180706856516,
+ 25.897828128527067,
+ 22.031265427499104,
+ 19.459103732784712,
+ 17.714856322672546]
+"""
+fig, ax = plt.subplots(figsize=(5,5), dpi=400)
 
-ax.plot(theta_linspace, Hc2_vals, 'k-')
+ax.plot(np.rad2deg(theta_linspace), Hc2_vals, 'k-', label="Simulation")
 
-Hc2_perp = perp_gl_model(0)
+Hc2_perp = 8.125 #perp_gl_model(0)
 # Hc2_par =
 
-ax.plot(theta_linspace, gl_angle_model(theta_linspace, Hc2_vals[len(Hc2_vals)//2], Hc2_perp), 'm--')
-ax.plot(theta_linspace, tinkham_angle_model(theta_linspace, Hc2_vals[len(Hc2_vals)//2], Hc2_perp), 'c--')
 
-for i in range(len(Hc2_vals)):
-    print(Hc2_vals[i])
-    ax.plot(theta_linspace, gl_angle_model(
-        theta_linspace, Hc2_vals[i], Hc2_perp), 'm--')
-    ax.plot(theta_linspace, tinkham_angle_model(
-        theta_linspace, Hc2_vals[i], Hc2_perp), 'c--')
+ax.plot(np.rad2deg(theta_linspace), gl_angle_model(theta_linspace, Hc2_vals[len(Hc2_vals)//2], Hc2_perp), 'm--', label="G-L Model")
+ax.plot(np.rad2deg(theta_linspace), tinkham_angle_model(theta_linspace, Hc2_vals[len(Hc2_vals)//2], Hc2_perp), 'c--', label="Tinkham Model")
+
+ax.set_ylabel(r"$H_{c2}$ ($\theta$)")
+ax.set_xlabel("Polar Angle " r"$\theta$ (" r"$\phi$" " = 0)")
+
+plt.legend(loc="upper left", fontsize=7)
+"""
+
 """
 # r = find_phase_diagram(20, theta=np.pi/2 - np.pi/36)
 # print(r)
 
 
 # the best plot we got
-# r = np.array([[0.0, 6.5], [11.37174469824445, 6.29], [16.250100230922534, 6.08], [19.9859555318214, 5.87], [23.275395774600604, 5.66], [26.181072285375002, 5.45], [28.919673844920524, 5.24], [31.439747844127837, 5.029999999999999], [33.881668229907156, 4.82], [36.22660664836119, 4.609999999999999], [38.515948445701945, 4.4], [40.743604452325435, 4.1899999999999995], [42.92326443890704, 3.98], [45.067311769810324, 3.77], [47.20943594241787, 3.56], [49.33921965805612, 3.35], [51.46849677747653, 3.14], [
-#   53.5878311541133, 2.93], [55.77682917515372, 2.72], [57.98492853853642, 2.5100000000000002], [60.251754495857355, 2.3000000000000003], [62.55411936964707, 2.0900000000000003], [64.89499190626333, 1.8800000000000003], [67.26104144416645, 1.6699999999999995], [69.65771969667891, 1.4599999999999997], [72.20027561938744, 1.2499999999999998], [75.12950264719204, 1.0399999999999998], [79.91791839509291, 0.8299999999999998], [83.92096716961888, 0.6199999999999999], [99.93546429987978, 0.4099999999999999]])
+r = np.array([[0.0, 6.5], [11.37174469824445, 6.29], [16.250100230922534, 6.08], [19.9859555318214, 5.87], [23.275395774600604, 5.66], [26.181072285375002, 5.45], [28.919673844920524, 5.24], [31.439747844127837, 5.029999999999999], [33.881668229907156, 4.82], [36.22660664836119, 4.609999999999999], [38.515948445701945, 4.4], [40.743604452325435, 4.1899999999999995], [42.92326443890704, 3.98], [45.067311769810324, 3.77], [47.20943594241787, 3.56], [49.33921965805612, 3.35], [51.46849677747653, 3.14], [
+  53.5878311541133, 2.93], [55.77682917515372, 2.72], [57.98492853853642, 2.5100000000000002], [60.251754495857355, 2.3000000000000003], [62.55411936964707, 2.0900000000000003], [64.89499190626333, 1.8800000000000003], [67.26104144416645, 1.6699999999999995], [69.65771969667891, 1.4599999999999997], [72.20027561938744, 1.2499999999999998], [75.12950264719204, 1.0399999999999998], [79.91791839509291, 0.8299999999999998], [83.92096716961888, 0.6199999999999999], [99.93546429987978, 0.4099999999999999]])
+
 
 #Hc2_par = plot_phase_diagram_fitted(r, True)[0][0]
 
@@ -472,7 +494,7 @@ for i in range(len(Hc2_vals)):
 #Hc2_par = par_gl_model(0, d)
 
 t = H_angle(40, 6.4, [0, 180])  # same shape, peak is a little above 90 ?
-"""
+
 t = np.array([[2.17652344,   1.],
               [2.17652344,   5.54166667],
               [2.23507812,  10.08333333],
@@ -498,7 +520,7 @@ t = np.array([[2.17652344,   1.],
               [6.68523438, 100.91666667],
               [5.86546875, 105.45833333],
               [5.1628125, 110.]])
-"""
+
 print(t)
 #Hc2_par = 8.125
 plot_H_angle(t)
@@ -515,4 +537,4 @@ print("Runtime: {} s".format(time.time() - time_0))
 
 # intro to superconductivity textbook pg 321. look at model for Hc2(theta)
 # derive the susceptibility using prb paper for out-of-plane H field
-"""
+
