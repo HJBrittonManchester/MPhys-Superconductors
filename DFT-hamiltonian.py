@@ -5,9 +5,11 @@ Created on Tue Nov 12 11:12:32 2024
 @author: hbrit
 """
 import numpy as np
+import scipy.linalg as LA
 import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
 import scipy.constants
+from phase_diagram import H_0, a
+from matplotlib import colors
 
 
 ham_file = "MoS2/MoS2_hr.dat"
@@ -17,23 +19,32 @@ MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
 k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
-DEBYE_ENERGY = 10000  # 0.022  # 0.022  # eV
-FERMI_ENERGY = 0.915  # eV
+DEBYE_ENERGY = 0.022  # 0.022  # eV
+FERMI_ENERGY = 0.915  # 0.915  # eV
 
+# Default field allignment - x direction
+PHI_DEFAULT = 0
+THETA_DEFAULT = np.pi / 2
 
 # Simulation settings
-RESOLUTION = 1000
-NUM_FREQ = 500
-PRESELECTION_BOXSIZE = -1  # 0.22  # set to -1 to use full area but, 0.22 works well
-BRACKET_TOLERANCE = 1e-4
+RESOLUTION = 500
+NUM_FREQ = 1000
+
+# k - path settings
+DEFAULT_PATH = ['K', 'G', 'K']
+
+# Full BZ settings
+PRESELECTION_BOXSIZE = 0.22  # set to -1 to use full area but, 0.22 works well
+
+
+# Bracket settings
+BRACKET_TOLERANCE = 1e-5
 MAX_BRACKET_STEPS = 25
-
-TEMP_START = 0
-TEMP_STOP = np.pi
+TEMP_START = 6.45
+TEMP_STOP = .2
 TEMP_STEPS = 10
-
 H_U_START = 100
-H_L_START = -10
+H_L_START = -1
 
 
 #########################################################
@@ -78,9 +89,9 @@ def get_k_block(res=RESOLUTION, size_of_box=PRESELECTION_BOXSIZE):
         return k
 
 
-def get_k_path(path=['G', 'M', 'K', 'G'],  res=RESOLUTION):
+def get_k_path(path=DEFAULT_PATH,  res=RESOLUTION):
     name_points = {'G': np.array([0, 0, 0]), 'K': np.array(
-        [1/3, 1/3, 0]), 'M': np.array([1/2, 0, 0])}
+        [1/3, 1/3, 0]), 'M': np.array([0, 1/2, 0])}
 
     path_lengths = np.zeros(len(path)-1)
 
@@ -94,71 +105,54 @@ def get_k_path(path=['G', 'M', 'K', 'G'],  res=RESOLUTION):
     kpath = []
 
     for i in range(len(path)-1):
-        for j in range(path_size[i]):
-            kpath.append(j / path_size[i] * (name_points[path[i+1]] -
+        for j in range(RESOLUTION):
+            kpath.append(j / RESOLUTION * (name_points[path[i+1]] -
                          name_points[path[i]]) + name_points[path[i]])
 
     return np.array(kpath).T * 2 * np.pi
 
 
-def get_abs_k_path(path=['G', 'M', 'K', 'G'],  res=RESOLUTION):
-    name_points = {'G': np.array([0, 0, 0]), 'K': np.array(
-        [1/3, 1/3, 0]), 'M': np.array([1/2, 0, 0])}
+def get_k_path_spacing(path):
+    spacing = np.zeros(len(path[0]))
 
-    path_lengths = np.zeros(len(path)-1)
+    for i in range(1, len(path[0])):
 
-    for i in range(len(path)-1):
-        path_lengths[i] = np.linalg.norm(
-            (name_points[path[i+1]] - name_points[path[i]]))
+        spacing[i] = np.linalg.norm(path[:, i] - path[:, i-1]) + spacing[i-1]
 
-    path_size = np.array(path_lengths * RESOLUTION /
-                         np.sum(path_lengths), dtype=int)
+        # print(spacing[i] - spacing[i-1])
 
-    kpath = []
+    return spacing / spacing[-1]
 
-    multiplier = -1
-
-    for i in range(len(path)-1):
-        if path[i] == 'K':
-            multiplier = 1
-
-        for j in range(path_size[i]):
-            temp_k = j / path_size[i] * (name_points[path[i+1]] -
-                                         name_points[path[i]]) + name_points[path[i]]
-
-            kpath.append(
-                multiplier * np.linalg.norm(name_points['K'] - temp_k))
-
-    return np.array(kpath).T * 2 * np.pi
-
-
+################################################################
 # eigen value operations
 
 
 def epsilon(hamk):
-    eigs = np.array([np.real_if_close(np.linalg.eigh(hamk[:, :, i])[0])
+    eigs = np.array([np.real_if_close(LA.eig(hamk[:, :, i])[0])
                     for i in range(hamk.shape[2])], dtype=float)
     return eigs
 
 
 def projection_z(hamk, band=0):
-    eigvecs = np.array([np.linalg.eigh(hamk[:, :, i])[1]
+    eigvecs = np.array([LA.eig(hamk[:, :, i])[1]
                         for i in range(hamk.shape[2])], dtype=complex)
-    print(eigvecs.shape)
+    # print(eigvecs.shape)
 
-    proj = eigvecs[:, :, 0] * eigvecs[:, :, 0].conj() - \
-        eigvecs[:, :, 1] * eigvecs[:, :, 1].conj()
+    proj = eigvecs[:, 0] * eigvecs[:, 0].conj() - \
+        eigvecs[:,  1] * eigvecs[:, 1].conj()
+
+    # print(proj[:, 0] - proj[:, 1])
 
     return proj
 
+
 def get_eig_vec(hamk):
-    return  np.array([np.linalg.eigh(hamk[:, :, i])[1]
-                        for i in range(hamk.shape[2])], dtype=complex)
-    
+    return np.array([LA.eig(hamk[:, :, i])[1]
+                     for i in range(hamk.shape[2])], dtype=complex)
 
 
 def projection_x(hamk, band=0):
-    eigvecs = np.array([np.linalg.eigh(hamk[:, :, i])[1]
+    eigvecs = np.array([LA.eig(hamk[:, :, i])[1]
                         for i in range(hamk.shape[2])], dtype=complex)
 
     proj = eigvecs[:, :, 0] * eigvecs[:, :, 1].conj() + \
@@ -168,13 +162,15 @@ def projection_x(hamk, band=0):
 
 
 def projection_y(hamk, band=0):
-    eigvecs = np.array([np.linalg.eigh(hamk[:, :, i])[1]
+    eigvecs = np.array([np.linalg.eig(hamk[:, :, i])[1]
                         for i in range(hamk.shape[2])], dtype=complex)
 
     proj = 1j * eigvecs[:, :, 0] * eigvecs[:, :, 1].conj() - \
         eigvecs[:, :, 1] * eigvecs[:, :, 0].conj() * 1j
 
     return proj
+
+#############################################################
 
 
 def get_hamr():
@@ -214,7 +210,7 @@ def find_hamk(k, hamr, ndeg, rvec):
     for i in range(k.shape[1]):
         for j in range(hamr.shape[2]):
 
-            if np.linalg.norm(rvec[:, j]) > 900:  # for debug purposes
+            if np.linalg.norm(rvec[:, j]) > 9999:  # for debug purposes
                 continue
 
             # Compute the phase factor
@@ -222,12 +218,26 @@ def find_hamk(k, hamr, ndeg, rvec):
             phase = np.dot(k[:, i], rvec[:, j])
 
             # Add the contribution to the Hamiltonian in k-space
-            ham[:, :, i] += hamr[:, :, j] * complex(np.cos(phase), -np.sin(phase)) / ndeg[j]
+            ham[:, :, i] += hamr[:, :, j] * \
+                complex(np.cos(phase), -np.sin(phase)) / ndeg[j]
 
     return ham
 
 
-def get_bands_on_path(path=['G', 'M', 'K', 'G']):
+def get_toy_ham(b):
+
+    kx = (b[0] + 2 * b[1]) / (a * np.sqrt(3))
+    ky = b[0] / a
+
+    H = np.zeros((2, 2, len(kx)), dtype=complex)
+
+    for i in range(len(kx)):
+        H[:, :, i] = H_0(kx[i], ky[i])
+
+    return H
+
+
+def get_bands_on_path(path=DEFAULT_PATH):
 
     hamr, ndeg, rvec = get_hamr()  # Read in the real-space hamiltonian
 
@@ -235,22 +245,29 @@ def get_bands_on_path(path=['G', 'M', 'K', 'G']):
 
     hamk_pert = vary_ham(hamk)  # Adjust the fermi level
 
+    hamk_pert_toy = get_toy_ham(get_k_path())
+
     # Find the energy eigen values
-    energy = epsilon(hamk_pert)
+    energy_toy = epsilon(hamk_pert_toy)
+    energy_real = epsilon(hamk_pert)
 
-    return energy
+    return energy_real, energy_toy
 
 
-def vary_ham(ham, ef=FERMI_ENERGY, H=0, theta=np.pi / 2, phi=0):
+def vary_ham(ham, ef=FERMI_ENERGY, H=0, theta=THETA_DEFAULT, phi=PHI_DEFAULT):
 
-    new_ham = np.zeros_like(ham, dtype=np.complex128)
-    new_ham[0, 0, :] = ham[0, 0, :] - ef  # - H * MU_B * np.cos(theta)
-    new_ham[1, 1, :] = ham[1, 1, :] - ef  # + H * MU_B * np.cos(theta)
+    new_ham = np.zeros_like(ham, dtype=complex)
+    new_ham[0, 0, :] = ham[0, 0, :] - ef - H * MU_B * np.cos(theta)
+    new_ham[1, 1, :] = ham[1, 1, :] - ef + H * MU_B * np.cos(theta)
 
-    new_ham[0, 1, :] = ham[0, 1, :]  # - H * MU_B * \
-    #    complex(np.cos(phi), np.sin(phi)) * np.sin(theta)
-    new_ham[1, 0, :] = ham[1, 0, :]  # - H * MU_B * \
-    #   complex(np.cos(phi), -np.sin(phi)) * np.sin(theta)
+    new_ham[0, 1, :] = ham[0, 1, :] - H * MU_B * \
+        complex(np.cos(phi), np.sin(phi)) * np.sin(theta)
+    new_ham[1, 0, :] = ham[1, 0, :] - H * MU_B * \
+        complex(np.cos(phi), -np.sin(phi)) * np.sin(theta)
+
+    # print(new_ham[0, 1, 10])
+
+    # print(H * MU_B * complex(np.cos(phi), np.sin(phi)) * np.sin(theta))
 
     return new_ham
 
@@ -282,7 +299,7 @@ def susc(ham_N, ham_P, T, for_plot=False):
         greens_P = get_greens_function(ham_P, current_freq)
 
         chi_0 -= greens_P[0, 0, :] * greens_N[1, 1, :] - \
-            greens_N[0, 1, :]*greens_P[1, 0, :]
+            greens_P[0, 1, :]*greens_N[1, 0, :]
 
     if for_plot:
         return np.real_if_close(k_B * T / (RESOLUTION**2) * chi_0, 1e-4)
@@ -296,6 +313,8 @@ def find_v():
 
     hamk_P = find_hamk(get_k_block(), hamr, ndeg, rvec)  # FT the hamiltonian
 
+    # hamk_P = get_toy_ham()
+
     hamk_pert_P = vary_ham(hamk_P)  # Adjust the fermi level
 
     # Find the mean of energy eigen values
@@ -307,7 +326,11 @@ def find_v():
     # Find -ve ham to significant k points
     significant_kpoints = get_k_block(
     )[:, significant_kpoints_indices][:, 0, :]
+
     hamk_N = find_hamk(-significant_kpoints, hamr, ndeg, rvec)
+    # hamk_N = get_toy_ham(-1)[:, :, significant_kpoints_indices][:, :, 0]
+
+    print(hamk_N.shape)
 
     # correct +ve ham to significant k points
     hamk_P = hamk_P[:, :, significant_kpoints_indices][:, :, 0]
@@ -319,7 +342,7 @@ def find_v():
     return hamk_P, hamk_N, v
 
 
-def delta(T,  v, hamk_P, hamk_N, H=0, phi=0, theta=np.pi/2):
+def delta(T,  v, hamk_P, hamk_N, H=0, phi=PHI_DEFAULT, theta=THETA_DEFAULT):
 
     hamk_pert_N = vary_ham(hamk_N, FERMI_ENERGY, H, theta=theta, phi=phi)
 
@@ -329,11 +352,14 @@ def delta(T,  v, hamk_P, hamk_N, H=0, phi=0, theta=np.pi/2):
 
 
 def braket(ham_P, ham_N, T, v, start_H_U=H_U_START, start_H_L=H_L_START,
-           theta=np.pi/2, phi=0., tol=BRACKET_TOLERANCE):
+           theta=THETA_DEFAULT, phi=PHI_DEFAULT, tol=BRACKET_TOLERANCE):
 
     # Larger H => +ve Delta
     # Smaller H => -ve Delta
     iterations = 0
+
+    # theta = T
+    # T = 6.4
 
     current_H_U = start_H_U
     current_H_L = start_H_L
@@ -344,7 +370,7 @@ def braket(ham_P, ham_N, T, v, start_H_U=H_U_START, start_H_L=H_L_START,
                             H=current_H_L, theta=theta, phi=phi)
 
     # print("Δ_max = {}, Δ_min = {}".format(
-    #     current_delta_U, current_delta_L))
+    #    current_delta_U, current_delta_L))
 
     if current_delta_U < 0:
         print("Upper H too low")
@@ -358,7 +384,7 @@ def braket(ham_P, ham_N, T, v, start_H_U=H_U_START, start_H_L=H_L_START,
 
     while abs(current_delta_L) > tol and abs(current_delta_U) > tol and iterations < MAX_BRACKET_STEPS:
         # print("Δ_max = {}, Δ_min = {}".format(
-        #     current_delta_U, current_delta_L))
+        #    current_delta_U, current_delta_L))
 
         if current_delta_L > 0 and current_delta_U > 0:
             print("both +ve sign")
@@ -416,7 +442,7 @@ def bracketing(ham_P, ham_N, v):
             (TEMP_STEPS-1) * t_index
         T_array.append(temp_T)
 
-        H_array.append(braket(ham_P.copy(), ham_N.copy(), 6.4, v, phi=temp_T))
+        H_array.append(braket(ham_P.copy(), ham_N.copy(), temp_T, v))
 
         print(H_array[-1])
 
@@ -427,65 +453,55 @@ def bracketing(ham_P, ham_N, v):
 
 
 def main():
-    #ham_P, ham_N, v = find_v()
+    # hamk_P, hamk_N, v = find_v()
     # print(v)
 
-    # bracketing(ham_P, ham_N, v)
-    # e = get_bands_on_path(path=['G', 'M', 'K', 'G'])
-    # ks = get_abs_k_path()
-    
-    hr_obs = get_hamr()
-    
-    k = get_k_path(path=['K','G'])
-    
-    hamk = find_hamk(k, *hr_obs)
-    
-    ham_P =  vary_ham(hamk)
+    # bracketing(hamk_P, hamk_N, v)
 
+    hamr_obs = get_hamr()
+    k = get_k_path()
+    hamk = find_hamk(k, *hamr_obs)
+    hamk = vary_ham(hamk, H=9, theta=0)
 
-    e = epsilon(ham_P)
-    e = e
-    
-    x = np.linspace(0, 1, len(e[:,0]))
-    
-    eVecs = get_eig_vec(ham_P)
-    new_eVecs = eVecs.copy()
-    
-    for i in range(1,len(eVecs)):
-        overlap_same = np.dot(np.conj(eVecs[i-1, :, 0]), eVecs[i, :, 0],)
-        overlap_diff = np.dot(np.conj(eVecs[i-1, :, 0]), eVecs[i, :, 1])
-        
-        print(overlap_same)
-        
-        if overlap_diff > overlap_same:
-            temp = eVecs[i,:,0].copy()
-            new_eVecs[i,:, 0] = eVecs[i,:,1].copy()
-            new_eVecs[i,:, 1] = temp.copy()
+    p_z = np.real(projection_z(hamk))
+    p_x = np.real(projection_x(hamk))
+    p_y = np.real(projection_y(hamk))
 
-    upper_ele = np.abs(new_eVecs[:,0,:])
-    
-    #print(upper_ele)
+    # total_proj = p_z**2 + p_x**2 + p_y**2
 
+    print((p_z).mean(axis=0))
 
-    pr_z = projection_z(vary_ham(ham_P))
-    pr_z = np.real(pr_z)
-    
-    pr_x = projection_x(vary_ham(ham_P))
-    pr_x = np.real(pr_x)
-    
-    cmap = plt.cm.viridis
-    norm = plt.Normalize(pr_z.min(), pr_z.max())
+    # e_dft, e_t = get_bands_on_path()
+    e_dft = epsilon(hamk)
 
-    
-    for i in range(len(e[0])):
+    xk = get_k_path_spacing(k)
 
-        colors = cmap(norm(pr_z[:,i]))
-                
-        plt.scatter(x, e[:,i], c= colors)
-        plt.plot(x,e[:,i], 'k')
-        plt.plot(x, upper_ele)
-    plt.colorbar()
+    fig, axs = plt.subplots(3, figsize=(10, 15), dpi=100, sharex=True)
 
+    norm = colors.Normalize(-1, 1)
+    projs = [p_x, p_y, p_z]
+    titles = ['x', 'y', 'z']
+
+    for j in range(len(axs)):
+
+        for i in range(len(e_dft[0])):
+
+            scatter = axs[j].scatter(xk, e_dft[:, i], c=projs[j][:, i],
+                                     cmap='bwr', norm=norm, linewidths=1)
+            axs[j].set_title(titles[j])
+            # plt.plot(xk, e_t)
+            # plt.hlines(0, 0, 1)
+            # plt.hlines(0.022, 0, 1)
+            # plt.hlines(-0.022, 0, 1)
+
+            # Add colorbar to indicate the values of z
+
+            # plt.xlabel("Distance along k-path")
+            # plt.ylabel("Energy / eV")
+
+            # plt.title("Energy bands for No field ")
+    # plt.xlim(0.3, .4)
+    #plt.colorbar(scatter, label='y value')
 
 
 main()

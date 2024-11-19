@@ -2,7 +2,7 @@
       Implicit None
 !--------to be midified by the usere
       character(len=80):: prefix="MoS2"
-      integer,parameter::nkpath=4,np=10
+      integer,parameter::nkpath=4,np=100
       real*8,parameter::ef= 0.915 !4.18903772
 !------------------------------------------------------
       integer*4 ik,ikmax,ir
@@ -92,6 +92,7 @@
      allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 
 !---- Fourrier transform H(R) to H(k)
+     open(104, file="zproj.dat")
       ene=0d0
       do k=1,nk
          HK=(0d0,0d0)
@@ -110,17 +111,20 @@
          HK(2,2) = HK(2,2) - ef
 
          call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
+
          
-         if ( k == nk / 2d0 ) then
-            temp_proj_z = Hk(1,1)*conjg(Hk(1,1)) - Hk(2,1)*conjg(Hk(2,1)) - Hk(2,2)*conjg(Hk(2,2)) + Hk(1,2)*conjg(Hk(1,2))  
-            temp_proj_x = Hk(1,1)*conjg(Hk(2,1)) + Hk(2,1)*conjg(Hk(1,1)) - Hk(2,2)*conjg(Hk(1,2)) - Hk(1,2)*conjg(Hk(2,2)) 
-            write(*,*)temp_proj_z
-            write(*,*)temp_proj_x
-         end if
+         
+         temp_proj_z = real( Hk(2,1)*conjg(Hk(2,1)) - Hk(1,2)*conjg(Hk(1,2)) )
+
+         write(104,*)temp_proj_z
+            
+      
 
          !write(*,*)Hk
          
       enddo
+
+      close(104)
       
       do i=1,nb
          do k=1,nk
