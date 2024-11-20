@@ -12,7 +12,7 @@ from phase_diagram import H_0, a
 from matplotlib import colors
 
 
-ham_file = "MoS2/MoS2_hr.dat"
+ham_file = "MoS2/MoS2_hr_new.dat"
 
 # constants
 MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
@@ -20,15 +20,15 @@ k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
 DEBYE_ENERGY = 0.022  # 0.022  # eV
-FERMI_ENERGY = 0.915  # 0.915  # eV
+FERMI_ENERGY = -.95  # 0.915  # eV
 
 # Default field allignment - x direction
 PHI_DEFAULT = 0
 THETA_DEFAULT = np.pi / 2
 
 # Simulation settings
-RESOLUTION = 500
-NUM_FREQ = 1000
+RESOLUTION = 300
+NUM_FREQ = 500
 
 # k - path settings
 DEFAULT_PATH = ['K', 'G', 'K']
@@ -38,13 +38,13 @@ PRESELECTION_BOXSIZE = 0.22  # set to -1 to use full area but, 0.22 works well
 
 
 # Bracket settings
-BRACKET_TOLERANCE = 1e-5
+BRACKET_TOLERANCE = 1e-9
 MAX_BRACKET_STEPS = 25
-TEMP_START = 6.45
-TEMP_STOP = .2
-TEMP_STEPS = 10
-H_U_START = 100
-H_L_START = -1
+TEMP_START = np.pi / 2 * 1.02
+TEMP_STOP = np.pi / 2 * 0.98
+TEMP_STEPS = 30
+H_U_START = 10
+H_L_START = 2
 
 
 #########################################################
@@ -186,14 +186,14 @@ def get_hamr():
         rvec = np.zeros((3, nr), dtype=float)
         hamr = np.zeros((2, 2, nr), dtype=np.complex128)
 
-        for step in range(11):  # should calculate this number from nr
+        for step in range(7):  # should calculate this number from nr
             ndeg = np.append(ndeg, np.array(
                 f.readline().strip().split("    "), dtype=int))
 
         for ri in range(nr):
             for xi in range(nb):
                 for yi in range(nb):
-                    temp_data = f.readline().strip().split("   ")
+                    temp_data = f.readline().strip().split()
 
                     index_1, index_2 = int(
                         temp_data[3]) - 1,  int(temp_data[4]) - 1
@@ -358,8 +358,8 @@ def braket(ham_P, ham_N, T, v, start_H_U=H_U_START, start_H_L=H_L_START,
     # Smaller H => -ve Delta
     iterations = 0
 
-    # theta = T
-    # T = 6.4
+    theta = T
+    T = 6.4
 
     current_H_U = start_H_U
     current_H_L = start_H_L
@@ -453,11 +453,11 @@ def bracketing(ham_P, ham_N, v):
 
 
 def main():
-    # hamk_P, hamk_N, v = find_v()
-    # print(v)
+    hamk_P, hamk_N, v = find_v()
+    print(v)
 
-    # bracketing(hamk_P, hamk_N, v)
-
+    bracketing(hamk_P, hamk_N, v)
+    '''
     hamr_obs = get_hamr()
     k = get_k_path()
     hamk = find_hamk(k, *hamr_obs)
@@ -502,6 +502,8 @@ def main():
             # plt.title("Energy bands for No field ")
     # plt.xlim(0.3, .4)
     #plt.colorbar(scatter, label='y value')
+    print(e_dft.min())
+    '''
 
 
 main()
