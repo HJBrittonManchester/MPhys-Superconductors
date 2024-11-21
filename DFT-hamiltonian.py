@@ -20,7 +20,7 @@ k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
 DEBYE_ENERGY = 0.022  # 0.022  # eV
-FERMI_ENERGY = -.95  # 0.915  # eV
+FERMI_ENERGY = -0.96  # eV
 
 # Default field allignment - x direction
 PHI_DEFAULT = 0
@@ -38,13 +38,13 @@ PRESELECTION_BOXSIZE = 0.22  # set to -1 to use full area but, 0.22 works well
 
 
 # Bracket settings
-BRACKET_TOLERANCE = 1e-9
+BRACKET_TOLERANCE = 1e-6
 MAX_BRACKET_STEPS = 25
-TEMP_START = np.pi / 2 * 1.02
-TEMP_STOP = np.pi / 2 * 0.98
-TEMP_STEPS = 30
-H_U_START = 10
-H_L_START = 2
+TEMP_START = 6.4
+TEMP_STOP = 2
+TEMP_STEPS = 10
+H_U_START = 60
+H_L_START = -1
 
 
 #########################################################
@@ -358,8 +358,8 @@ def braket(ham_P, ham_N, T, v, start_H_U=H_U_START, start_H_L=H_L_START,
     # Smaller H => -ve Delta
     iterations = 0
 
-    theta = T
-    T = 6.4
+    #theta = T
+    #T = 6.4
 
     current_H_U = start_H_U
     current_H_L = start_H_L
@@ -453,6 +453,7 @@ def bracketing(ham_P, ham_N, v):
 
 
 def main():
+    '''
     hamk_P, hamk_N, v = find_v()
     print(v)
 
@@ -503,7 +504,6 @@ def main():
     # plt.xlim(0.3, .4)
     #plt.colorbar(scatter, label='y value')
     print(e_dft.min())
-    '''
 
 
 main()
