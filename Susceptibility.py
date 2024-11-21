@@ -31,7 +31,7 @@ e = scipy.constants.elementary_charge
 
 # system parameters
 # FOR 1000 freq and 100 N -> -0.34864337758262043  # attractive potential
-V_VAL = -0.34864337758262043
+V = -0.6624042038525025
 
 # simulation params
 FREQUENCY_LIMIT = 1000
@@ -128,7 +128,7 @@ def Susceptibility(T, H_mag, theta, phi, plot=False, N_points=DEFAULT_N_POINTS, 
 
 
 def delta(T, H_mag, theta, phi, N_points=DEFAULT_N_POINTS):
-    global V
+    #global V
     return 1 - Susceptibility(T, H_mag, theta, phi, N_points) * V
 
 
@@ -150,10 +150,10 @@ def braket(start_H_U, start_H_L, T, theta=np.pi/2, phi=0., tol=0.0001, N_points=
 
     if current_delta_U < 0:
         print("Upper H too low")
-        return start_H_L
+        return [start_H_L, 0]
     elif current_delta_L > 0:
         print("Lower H too high")
-        return 0
+        return [0,0]
 
     old_H_U = 100
     old_H_L = 0
@@ -202,15 +202,17 @@ def braket(start_H_U, start_H_L, T, theta=np.pi/2, phi=0., tol=0.0001, N_points=
 
     if iterations == MAX_ITERATIONS:
         print("Reached max iterations")
-        return (current_H_L + current_H_U) / 2
-
+        return [current_H_L, current_H_U]
+    else:
+        return [current_H_L, current_H_U]
+    """
     if abs(current_delta_L) < tol:
         # print(current_delta_L)
         return current_H_L
     else:
         # print(current_delta_U)
         return current_H_U
-
+    """
 
 def test_freq_convergence(start, stop, points=10, N_points=100):
     global FREQUENCY_LIMIT
@@ -259,44 +261,53 @@ def range_guesser(T):
 
 def find_phase_diagram(steps=25, theta=np.pi/2):
     values = []
-    H = 5
-    T_linspace = np.linspace(6.5, 0.1, steps)
+    lower_bounds = []
+    upper_bounds = []
+
+    T_linspace = np.linspace(7, 0.5, steps)
     for T in T_linspace:
         # for T_index in range(steps):
         #T = 6.3 * (1-(T_index) / steps) +.2
         #T = T_index
-        H_upper_estimate = range_guesser(T) + 20
-        H_lower_estimate = np.clip(range_guesser(T) - 25, -1, 100)
-        H = braket(H_upper_estimate, H_lower_estimate,  T, theta=theta)
+        #H_upper_estimate = range_guesser(T) + 20
+        #H_lower_estimate = np.clip(range_guesser(T) - 25, -1, 100)
+        H_upper_estimate = 100
+        H_lower_estimate = .1
+        bounds = braket(H_upper_estimate, H_lower_estimate,  T, theta=theta)
+        H = np.average(bounds, axis=0)
         values.append([H, T])
-        print("[{}, {}],".format(H, T))
-    return np.array(values)
+        lower_bounds.append([bounds[0], T])
+        upper_bounds.append([bounds[1], T])
+        print("[{}, {}], bounds: [{}, {}],".format(H, T, bounds[0], bounds[1]))
+    return np.array(values), np.array(lower_bounds), np.array(upper_bounds)
 
 
 def H_angle(steps, T, angle_range):
     values = []
+    lower_bounds = []
+    upper_bounds = []
 
     #H_upper_estimate = range_guesser(T) + 20
     #H_lower_estimate = np.clip(range_guesser(T) - 25, -1, 100)
-    H_upper_estimate = 22
-    H_lower_estimate = 12
-
-    # theta = np.pi/2  # going from -5 -> 5 degrees
+    H_upper_estimate = 7.536
+    H_lower_estimate = 7.534
 
     theta_linspace = np.linspace(
         np.deg2rad(angle_range[0]), np.deg2rad(angle_range[1]), steps)
 
     for theta_i in theta_linspace:
         # print(theta_i)
-        H = braket(H_upper_estimate, H_lower_estimate,
-                   T, theta=theta_i, tol=1e-6)
+        bounds = braket(H_upper_estimate, H_lower_estimate,
+                   T, theta=theta_i, tol=1e-11)
+        H = np.average(bounds, axis=0)
         theta_i = np.rad2deg(theta_i)
         values.append([H, theta_i])
-        print("[{}, {}],".format(H, theta_i))
+        lower_bounds.append([bounds[0], theta_i])
+        upper_bounds.append([bounds[1], theta_i])
+        print("[{}, {}], bounds: [{}, {}],".format(H, theta_i, bounds[0], bounds[1]))
+        
 
-    # print(values)
-
-    return np.array(values)
+    return np.array(values), np.array(lower_bounds), np.array(upper_bounds)
 
 
 def gl_angle_model(theta, Hc2_par, Hc2_perp):
@@ -319,14 +330,18 @@ def tinkham_angle_model(theta, Hc2_par, Hc2_perp):
     return first_term + second_term
 
 
-def plot_H_angle(t, Hc2_par=0, Hc2_perp=0, plot_fit=False):
+def plot_H_angle(t, t_l, t_u, Hc2_par=0, Hc2_perp=0, plot_fit=False):
 
     fig, ax = plt.subplots(figsize=(5, 5), dpi=400)
-
-    ax.plot(t[:, 1], t[:, 0], 'k-', label="Simulation")
+    errors = t.copy()
+    errors[:,0] = t_u[:,0] - t_l[:,0]
+    #print(errors)
+    #ax.plot(t[:, 1], t[:, 0], 'k-', label="Simulation")
+    ax.errorbar(t[:,1], t[:,0], errors[:,0], fmt='k-', label="Simulation")
     ax.set_ylabel(r"$\mu_{0}$ $H_{c2}$ (T)")
     ax.set_xlabel("Polar Angle " r"$\theta$ (°) (" r"$\phi$" " = 0)")
-    #ax.set_xlim((89, 91))
+    ax.set_xlim((89.9, 90.1))
+    ax.set_xticks([89.9, 89.95, 90, 90.05, 90.1])
     #ax.set_ylim((68, 75))
 
     if plot_fit:
@@ -335,8 +350,8 @@ def plot_H_angle(t, Hc2_par=0, Hc2_perp=0, plot_fit=False):
 
         ax.plot(theta, gl_angle_model(np.deg2rad(theta), Hc2_par, Hc2_perp),
                 'm--', label="Ginzburg-Landau Model")
-        ax.plot(theta, tinkham_angle_model(np.deg2rad(theta), Hc2_par, Hc2_perp),
-                'c--', label="Tinkham Model")
+        #ax.plot(theta, tinkham_angle_model(np.deg2rad(theta), Hc2_par, Hc2_perp),
+         #       'c--', label="Tinkham Model")
 
     plt.legend(loc="upper left", fontsize=7)
 
@@ -367,11 +382,14 @@ def par_gl_model(T, a):  # d):  # will be optimised
     return a * np.sqrt(1-T/Tc)
 
 
-def plot_phase_diagram_fitted(r, r_perp=0, plot_fit=False, fit_range=2):
+def plot_phase_diagram_fitted(r, r_l, r_u, r_perp=0, plot_fit=False, fit_range=2):
 
     fig, ax = plt.subplots(figsize=(5, 5), dpi=400)
+    
+    errors = r.copy()
+    errors[:,0] = abs(r_u[:,0] - r_l[:,0])
 
-    ax.plot(r[:, 1], r[:, 0], 'r-',
+    ax.errorbar(r[:, 1], r[:, 0], errors[:,0], fmt='r-',
             label="Phase Diagram, In-Plane H-Field ")
     # ax.plot(r_perp[:, 1], r_perp[:, 0], 'b-',
     #       label="Phase Diagram, Out-of-Plane H-Field ")
@@ -417,8 +435,8 @@ def plot_phase_diagram_fitted(r, r_perp=0, plot_fit=False, fit_range=2):
 time_0 = time.time()
 
 
-V = find_V()
-print(V)
+#V = find_V()
+#print(V)
 
 
 # print(delta(6.3, 0, np.pi/2, 0.))
@@ -471,31 +489,18 @@ Hc2_vals = [17.714856322672546,
             19.459103732784712,
             17.714856322672546]
 
-fig, ax = plt.subplots(figsize=(5, 5), dpi=400)
-
-ax.plot(np.rad2deg(theta_linspace), Hc2_vals, 'k-', label="Simulation")
 
 Hc2_perp = 8.125  # perp_gl_model(0)
 # Hc2_par =
 
-
-ax.plot(np.rad2deg(theta_linspace), gl_angle_model(theta_linspace,
-        Hc2_vals[len(Hc2_vals)//2], Hc2_perp), 'm--', label="G-L Model")
-ax.plot(np.rad2deg(theta_linspace), tinkham_angle_model(theta_linspace,
-        Hc2_vals[len(Hc2_vals)//2], Hc2_perp), 'c--', label="Tinkham Model")
-
-ax.set_ylabel(r"$H_{c2}$ ($\theta$)")
-ax.set_xlabel("Polar Angle " r"$\theta$ (" r"$\phi$" " = 0)")
-
-plt.legend(loc="upper left", fontsize=7)
 """
 
-"""
-r = find_phase_diagram(15)
-plot_phase_diagram_fitted(r)
+
+r, r_l, r_u = find_phase_diagram(15)
+plot_phase_diagram_fitted(r, r_l, r_u)
 # print(r)
 
-
+"""
 # the best plot we got
 r = np.array([[0.0, 6.5], [11.37174469824445, 6.29], [16.250100230922534, 6.08], [19.9859555318214, 5.87], [23.275395774600604, 5.66], [26.181072285375002, 5.45], [28.919673844920524, 5.24], [31.439747844127837, 5.029999999999999], [33.881668229907156, 4.82], [36.22660664836119, 4.609999999999999], [38.515948445701945, 4.4], [40.743604452325435, 4.1899999999999995], [42.92326443890704, 3.98], [45.067311769810324, 3.77], [47.20943594241787, 3.56], [49.33921965805612, 3.35], [51.46849677747653, 3.14], [
     53.5878311541133, 2.93], [55.77682917515372, 2.72], [57.98492853853642, 2.5100000000000002], [60.251754495857355, 2.3000000000000003], [62.55411936964707, 2.0900000000000003], [64.89499190626333, 1.8800000000000003], [67.26104144416645, 1.6699999999999995], [69.65771969667891, 1.4599999999999997], [72.20027561938744, 1.2499999999999998], [75.12950264719204, 1.0399999999999998], [79.91791839509291, 0.8299999999999998], [83.92096716961888, 0.6199999999999999], [99.93546429987978, 0.4099999999999999]])
@@ -523,7 +528,7 @@ r_perp = np.array([[0.,         6.5],
 #Hc2_par = par_gl_model(0, d)
 
 # t = H_angle(10, 6.4, [1, 179])  # same shape, peak is a little above 90 ?
-t_smallrange = H_angle(5, 6, [89, 91])
+#t, t_l, t_u = H_angle(10, 6.4, [89.9, 90.1])
 
 
 """
@@ -610,7 +615,51 @@ t_smallrange = np.array([[7.61811133, 89.],
                          [7.61811133, 90.55555556],
                          [7.61811133, 90.77777778],
                          [7.61811133, 91.]])
+# at N = 1200, F = 1000
+t = np.array([[ 7.53309219, 89.6       ],
+       [ 7.53389114, 89.68888889],
+       [ 7.53448822, 89.77777778],
+       [ 7.5348909 , 89.86666667],
+       [ 7.53508957, 89.95555556],
+       [ 7.53508957, 90.04444444],
+       [ 7.5348909 , 90.13333333],
+       [ 7.53448822, 90.22222222],
+       [ 7.53389114, 90.31111111],
+       [ 7.53309219, 90.4       ]])
 """
+t = np.array([[7.53498842, 89.9],
+       [7.53503841, 89.92222222],
+       [7.53507591, 89.94444444],
+       [7.53510092, 89.96666667],
+       [7.53511334, 89.98888889],
+       [7.535114944458006, 90],
+       [7.53511334, 90.01111111],
+       [7.53510092, 90.03333333],
+       [7.53507591, 90.05555556],
+       [7.53503841, 90.07777778],
+       [7.53498842, 90.1       ]])
+t_l = np.array([[ 7.5349884 , 89.9],
+       [ 7.53503839, 89.92222222],
+       [ 7.5350759 , 89.94444444],
+       [ 7.53510089, 89.96666667],
+       [ 7.53511328, 89.98888889],
+       [7.535114929199217, 90],
+       [ 7.53511328, 90.01111111],
+       [ 7.53510089, 90.03333333],
+       [ 7.5350759 , 90.05555556],
+       [ 7.53503839, 90.07777778],
+       [ 7.5349884 , 90.1       ]])
+t_u = np.array([[ 7.53498843, 89.9],
+       [ 7.53503842, 89.92222222],
+       [ 7.53507593, 89.94444444],
+       [ 7.53510095, 89.96666667],
+       [ 7.5351134 , 89.98888889],
+       [7.535114959716795, 90],
+       [ 7.5351134 , 90.01111111],
+       [ 7.53510095, 90.03333333],
+       [ 7.53507593, 90.05555556],
+       [ 7.53503842, 90.07777778],
+       [ 7.53498843, 90.1       ]])
 # run for T = 1.5k at 1000 points over small range, maybe 88-92?
 # print(t)
 # print(t_smallrange)
@@ -619,7 +668,8 @@ t_smallrange = np.array([[7.61811133, 89.],
 #Hc2_perp = 5.39
 #Hc2_perp = 9.7
 #Hc2_par = t_smallrange[len(t_smallrange)//2][0]
-plot_H_angle(t_smallrange)
+#Hc2_perp = 2.15
+#plot_H_angle(t, t_l, t_u, plot_fit=True, Hc2_par=7.535114929199217, Hc2_perp=Hc2_perp)
 #plot_H_angle(t, plot_fit=True, Hc2_par=Hc2_par, Hc2_perp=Hc2_perp)
 #plot_H_angle(t_smallrange, plot_fit=True, Hc2_par=Hc2_par, Hc2_perp=Hc2_perp)
 
