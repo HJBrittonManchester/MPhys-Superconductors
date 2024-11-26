@@ -16,29 +16,29 @@ from k_tools import get_k_path, get_k_block, get_k_path_spacing
 from phase_diagram import H_0, a
 
 
-ham_file = "MoS2/MoS2_hr_new.dat"
+ham_file = "Data/MoS2_hr.dat"
 
 # constants
 MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
 k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
-DEBYE_ENERGY = 0.022  # 0.022  # eV
-FERMI_ENERGY = -0.75 #-0.96  # eV
+DEBYE_ENERGY =  0.222  # eV
+FERMI_ENERGY = -0.96  # eV
 
 # Default field allignment - x direction
 PHI_DEFAULT = 0
 THETA_DEFAULT = np.pi / 2
 
 # Simulation settings
-RESOLUTION = 300
+RESOLUTION = 100
 NUM_FREQ = 500
 
 # k - path settings
-DEFAULT_PATH = ['K', 'G', 'K']
+DEFAULT_PATH = ['G', 'K', 'G']  
 
 # Full BZ settings
-PRESELECTION_BOXSIZE = 0.22  # set to -1 to use full area but, 0.22 works well
+PRESELECTION_BOXSIZE = 0.32 #0.22  # set to -1 to use full area but, 0.22 works well
 
 
 # Bracket settings
@@ -241,20 +241,21 @@ def susc(ham_N, ham_P, T, for_plot=False):
 ##############################################################################
 # DOS functions
 
-def DOS(E, hamk, res=RESOLUTION):
+def DOS(E, hamk, res=RESOLUTION, sigma = 1e-2):
     
     ham = vary_ham(hamk)
     
     E_k = epsilon(ham).flatten()
-    
-    print(E_k)
-    
-    sigma = 1e-3
+        
     
     deltas = (np.exp(-(E - E_k)**2 /(2* sigma**2) ) / (sigma * np.sqrt(2*np.pi))).sum()
     
     
     return deltas / (RESOLUTION * RESOLUTION)
+
+def BCS_critical_T(dos, v, E_D = DEBYE_ENERGY):
+    
+    return 1.134 * E_D * np.exp(-1/(dos * -v)) / k_B
     
     
 
@@ -419,7 +420,7 @@ def plot_projections(path = DEFAULT_PATH, res =RESOLUTION):
     hamr_obs = get_hamr()
     k = get_k_path(path, res)
     hamk = find_hamk(k, *hamr_obs)
-    hamk = vary_ham(hamk, H=9, theta=0)
+    hamk = vary_ham(hamk, H=0, theta=0)
 
     p_z = np.real(projection_z(hamk))
     p_x = np.real(projection_x(hamk))
@@ -465,14 +466,98 @@ def plot_projections(path = DEFAULT_PATH, res =RESOLUTION):
 
 def main():
     
-    hamk_P, hamk_N, v = find_v()
+    hamk_P, hamk_N, v = find_v(useToy=False)
+    
+    #k = get_k_path(DEFAULT_PATH, RESOLUTION)
+    
+    #hamr_obs =get_hamr()
+    
+    #hamk_P = find_hamk(k, *hamr_obs)
+    
+    print(hamk_P.shape)
     print(v)
-
+    
     #T, H, HL, HU = bracketing(hamk_P, hamk_N, v)
     
-    print(DOS(0, hamk_P))
+    sigmas = []
+    Ts = []
+    doss = []
+    energies = [-0.148 + i*  5e-3 for i in range(30)]
     
+    for e in energies:
+        dos = DOS(e, hamk_P,sigma = 1e-2) # * RESOLUTION 
+        
+        print(e)
+        
+        doss.append(dos)
+        
+    plt.plot(energies, doss)
+    plt.vlines(0.04,0.4,0.5,label="0.04", colors='red')
+    plt.vlines(-0.15,0.0,0.1,label="-0.15", colors='purple')
+    plt.vlines(0.12,0.45,.6,label="0.12", colors='green')
+    plt.legend()
+        
+    '''
     
-
+    inp = input("Next sigma = ")
+    while inp != 'q':
+        
+        en = float(inp)
+        
+        dos = DOS(en, hamk_P,sigma = 1e-3)
+        
+        print(dos)
+        
+        T_c = BCS_critical_T(dos, v)
+        
+        print(T_c)
+        
+        if dos < 1e-3:
+            inp = input("Next sigma = ")
+            continue
+        
+        sigmas.append(float(inp))
+        Ts.append(T_c)
+        doss.append(dos)
+        energies.append(en)
+        
+        sig_to_plot = -np.log10(np.array(sigmas))
+        
+        energies_to_plot = np.array(energies)
+        doss_to_plot = (np.array(doss))[energies_to_plot.argsort()]
+        energies_to_plot = energies_to_plot[energies_to_plot.argsort()]
+        
+        
+        Ts_to_plot = (np.array(Ts))[sig_to_plot.argsort()]
+        sig_to_plot = sig_to_plot[sig_to_plot.argsort()]
+        
+        plt.plot(energies_to_plot, doss_to_plot)
+        plt.show()
+        
+        inp = input("Next sigma = ")
+    '''
+    
 
 main()
+'''
+es = get_bands_on_path(DEFAULT_PATH)[0]
+
+plt.hlines(0.04,0.15,.35,label="0.04", colors='red')
+plt.hlines(-0.15,0.4,0.6,label="-0.15", colors='purple')
+plt.hlines(0.12,0.15,.35,label="0.12", colors='green')
+plt.hlines(0.12,0.65,.85, colors='green')
+plt.hlines(0.04,0.65,.85, colors='red')
+
+
+
+
+x = np.linspace(0,1,len(es[:,0]))
+
+plt.plot(x,es)
+
+plt.ylabel("Energy / eV")
+
+plt.xticks([0,0.5,1],labels=[r"$\Gamma$", "K", r"$\Gamma$"])
+plt.title("DFT energy dispersion with turning points marked")
+plt.legend(loc="upper right")
+'''
