@@ -23,22 +23,22 @@ MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
 k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
-DEBYE_ENERGY =  0.222  # eV
-FERMI_ENERGY = -0.96  # eV
+DEBYE_ENERGY = 100.522  # eV
+FERMI_ENERGY = -0.75 #-0.96  # eV
 
 # Default field allignment - x direction
 PHI_DEFAULT = 0
 THETA_DEFAULT = np.pi / 2
 
 # Simulation settings
-RESOLUTION = 100
+RESOLUTION = 200
 NUM_FREQ = 500
 
 # k - path settings
 DEFAULT_PATH = ['G', 'K', 'G']  
 
 # Full BZ settings
-PRESELECTION_BOXSIZE = 0.32 #0.22  # set to -1 to use full area but, 0.22 works well
+PRESELECTION_BOXSIZE = -1 # 0.32 #0.22  # set to -1 to use full area but, 0.22 works well
 
 
 # Bracket settings
@@ -49,6 +49,29 @@ TEMP_STOP = 2
 TEMP_STEPS = 10
 H_U_START = 60
 H_L_START = -1
+
+
+fermi_levels = np.array([[-0.85, 4.923828125],
+                         [-0.84, 5.064453125],
+                         [-0.83, 5.21923828125],
+                         [-0.82, 5.369824218749999],
+                         [-0.81, 5.5166259765625005],
+                         [-0.8, 5.6259765625],
+                         [-0.79, 5.8251953125],
+                         [-0.78, 5.97705078125],
+                         [-0.77, 6.137939453125],
+                         [-0.76, 6.3369140625],
+                         [-0.75, 6.5],
+                         [-0.74, 6.6009765625],
+                         [-0.73, 6.7426391601562505],
+                         [-0.72, 6.886572265625],
+                         [-0.71, 7.02021484375],
+                         [-0.7, 7.1708984375],
+                         [-0.69, 7.42236328125],
+                         [-0.68, 7.579833984375],
+                         [-0.67, 7.7490234375],
+                         [-0.66, 7.9560546875],
+                         [-0.65, 7.987060546875002]])
 
 
 
@@ -257,7 +280,8 @@ def BCS_critical_T(dos, v, E_D = DEBYE_ENERGY):
     
     return 1.134 * E_D * np.exp(-1/(dos * -v)) / k_B
     
-    
+def BCS_v(dos, td = 262.3, tc=6.5):
+    return 1 / (dos * np.log(tc / (1.134 * td)))
 
 
 
@@ -462,11 +486,35 @@ def plot_projections(path = DEFAULT_PATH, res =RESOLUTION):
     # plt.xlim(0.3, .4)
     #plt.colorbar(scatter, label='y value')
     print(e_dft.min())
+    
+    
+def get_DOS(ham, energy_range = (-0.15,1.5), energy_steps = 165, save_data=False):
 
+    density_of_state_array = []
+    
+    
+    energies = np.linspace(energy_range[0], energy_range[1], energy_steps)
+    energy_spacing = (energies[1]-energies[0]) 
+    for e in energies:
+        temp_dos = DOS(e, ham, sigma = 1e-2) 
+        
+        print("energy: \t {:.3e}, \t DOS: \t {:.3e}".format(e,temp_dos))
+        
+        density_of_state_array.append(temp_dos)
+    
+    density_of_state_array = np.array(density_of_state_array)
+    carrier_density = np.cumsum(density_of_state_array * energy_spacing)
+    
+    if save_data:
+        temp_data = np.dstack((energies, density_of_state_array, carrier_density))[0]
+        
+        np.save("Data/DOS_data_{}.csv".format(RESOLUTION), temp_data)
+    
+    return energies, density_of_state_array, carrier_density
 
 def main():
     
-    hamk_P, hamk_N, v = find_v(useToy=False)
+    hamk_P, hamk_N, v = find_v(useToy=True)
     
     #k = get_k_path(DEFAULT_PATH, RESOLUTION)
     
@@ -479,23 +527,32 @@ def main():
     
     #T, H, HL, HU = bracketing(hamk_P, hamk_N, v)
     
-    sigmas = []
-    Ts = []
-    doss = []
-    energies = [-0.148 + i*  5e-3 for i in range(30)]
+    e, d, c = get_DOS(hamk_P,save_data=True, energy_range = (-0.1,0.12), energy_steps=20)
     
-    for e in energies:
-        dos = DOS(e, hamk_P,sigma = 1e-2) # * RESOLUTION 
-        
-        print(e)
-        
-        doss.append(dos)
-        
-    plt.plot(energies, doss)
-    plt.vlines(0.04,0.4,0.5,label="0.04", colors='red')
-    plt.vlines(-0.15,0.0,0.1,label="-0.15", colors='purple')
-    plt.vlines(0.12,0.45,.6,label="0.12", colors='green')
-    plt.legend()
+    
+    TC = BCS_critical_T(d, v, 262.3 *k_B)
+    
+    plt.plot(fermi_levels[:,0] - FERMI_ENERGY, fermi_levels[:,1],'x')
+    plt.plot(e, TC,'--')
+    
+    
+    '''
+    fig, ax1 = plt.subplots()
+    
+    
+    ax1.plot(energies, doss)
+    ax1.set_xlabel("energy / eV")
+    ax1.set_ylabel("DOS")
+    
+    ax2 = ax1.twinx()
+    
+    ax2.set_ylabel("Carrier density")
+    ax2.plot(energies, carrier_density,'orange')
+    #plt.vlines(0.04,0.4,0.5,label="0.04", colors='red')
+    #plt.vlines(-0.15,0.0,0.1,label="-0.15", colors='purple')
+    #plt.vlines(0.12,0.45,.6,label="0.12", colors='green')
+    #plt.legend()
+    '''
         
     '''
     
@@ -539,6 +596,8 @@ def main():
     
 
 main()
+
+
 '''
 es = get_bands_on_path(DEFAULT_PATH)[0]
 
