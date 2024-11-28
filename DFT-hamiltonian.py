@@ -6,6 +6,7 @@ Created on Tue Nov 12 11:12:32 2024
 """
 import numpy as np
 import scipy.linalg as LA
+import scipy.optimize as op
 import matplotlib.pyplot as plt
 import scipy.constants
 from matplotlib import colors
@@ -23,30 +24,31 @@ MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
 k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
-DEBYE_ENERGY = 100.522  # eV
-FERMI_ENERGY = -0.75 #-0.96  # eV
+DEBYE_TEMP = 262.3 # K
+DEBYE_ENERGY = 9990.022  # eV
+FERMI_ENERGY = -0.96  # eV
 
 # Default field allignment - x direction
 PHI_DEFAULT = 0
 THETA_DEFAULT = np.pi / 2
 
 # Simulation settings
-RESOLUTION = 200
+RESOLUTION = 100
 NUM_FREQ = 500
 
 # k - path settings
 DEFAULT_PATH = ['G', 'K', 'G']  
 
 # Full BZ settings
-PRESELECTION_BOXSIZE = -1 # 0.32 #0.22  # set to -1 to use full area but, 0.22 works well
+PRESELECTION_BOXSIZE = -1 # 0.32  # set to -1 to use full area but, 0.22 works well
 
 
 # Bracket settings
 BRACKET_TOLERANCE = 1e-6
 MAX_BRACKET_STEPS = 25
-TEMP_START = 6.4
-TEMP_STOP = 2
-TEMP_STEPS = 10
+TEMP_START = 9
+TEMP_STOP = 6.5
+TEMP_STEPS = 50
 H_U_START = 60
 H_L_START = -1
 
@@ -208,7 +210,6 @@ def get_bands_on_path(path=DEFAULT_PATH):
 
 
 def vary_ham(ham, ef=FERMI_ENERGY, H=0, theta=THETA_DEFAULT, phi=PHI_DEFAULT):
-
     new_ham = np.zeros_like(ham, dtype=complex)
     new_ham[0, 0, :] = ham[0, 0, :] - ef - H * MU_B * np.cos(theta)
     new_ham[1, 1, :] = ham[1, 1, :] - ef + H * MU_B * np.cos(theta)
@@ -276,11 +277,11 @@ def DOS(E, hamk, res=RESOLUTION, sigma = 1e-2):
     
     return deltas / (RESOLUTION * RESOLUTION)
 
-def BCS_critical_T(dos, v, E_D = DEBYE_ENERGY):
+def BCS_critical_T(dos, v, td = DEBYE_TEMP):
     
-    return 1.134 * E_D * np.exp(-1/(dos * -v)) / k_B
+    return 1.134 * td * np.exp(-1/(dos * -v)) 
     
-def BCS_v(dos, td = 262.3, tc=6.5):
+def BCS_v(dos, td = DEBYE_TEMP, tc=6.5):
     return 1 / (dos * np.log(tc / (1.134 * td)))
 
 
@@ -291,7 +292,6 @@ def BCS_v(dos, td = 262.3, tc=6.5):
 
 
 def delta(T,  v,   hamk_P, hamk_N, fermi_energy = FERMI_ENERGY, H=0, phi=PHI_DEFAULT, theta=THETA_DEFAULT):
-
     hamk_pert_N = vary_ham(hamk_N, fermi_energy, H, theta=theta, phi=phi)
 
     hamk_pert_P = vary_ham(hamk_P, fermi_energy, H, theta=theta, phi=phi)
@@ -322,10 +322,10 @@ def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START,
 
     if current_delta_U < 0:
         print("Upper H too low")
-        return start_H_L
+        return [start_H_L,start_H_L]
     elif current_delta_L > 0:
         print("Lower H too high")
-        return 0
+        return [0,0]
 
     old_H_U = 100
     old_H_L = 0
@@ -377,7 +377,7 @@ def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START,
     return [current_H_L, current_H_U]
 
 
-def bracketing(ham_P, ham_N, v):
+def bracketing(ham_P, ham_N, v, fermi_energy = FERMI_ENERGY):
     T_array = np.linspace(TEMP_START, TEMP_STOP, TEMP_STEPS)
     H_array = []
     
@@ -388,7 +388,7 @@ def bracketing(ham_P, ham_N, v):
         temp_T = T_array[t_index]
         
         
-        bounds = braket(ham_P.copy(), ham_N.copy(), temp_T, v)
+        bounds = braket(ham_P.copy(), ham_N.copy(), temp_T, v, fermi_energy)
         
         mean_H = (bounds[0] + bounds[1])/2
         
@@ -400,6 +400,67 @@ def bracketing(ham_P, ham_N, v):
         
     return T_array, np.array(H_array), np.array(lower_bounds), np.array(upper_bounds)
 
+
+def fermi_level_bracketing(ham_P, ham_N, v, ef=FERMI_ENERGY, start_T_L=6, start_T_U=9.3,
+                           theta=THETA_DEFAULT, phi=PHI_DEFAULT, tol=BRACKET_TOLERANCE):
+    iterations = 0
+
+    current_T_L = start_T_L
+    current_T_U = start_T_U
+    current_delta_L = delta(current_T_L, v, ham_P, ham_N, fermi_energy=ef,
+                            H=0, theta=theta, phi=phi)
+    current_delta_U = delta(current_T_U, v, ham_P, ham_N, fermi_energy=ef,
+                            H=0, theta=theta, phi=phi)
+    old_T_L = 5
+    old_T_U = 7
+
+    while abs(current_delta_L) > tol and abs(current_delta_U) > tol and iterations < MAX_BRACKET_STEPS:
+
+        if current_delta_L > 0 and current_delta_U > 0:
+            print("both +ve sign")
+
+            current_T_U = current_T_L
+            current_T_L = old_T_L
+
+            # reset upper
+            current_delta_U = current_delta_L
+            # recalculate lower
+            current_delta_L = delta(current_T_L, v, ham_P, ham_N, fermi_energy=ef,
+                                    H=0, theta=theta, phi=phi)
+
+        elif current_delta_L < 0 and current_delta_U < 0:
+            print("both -ve sign")
+
+            current_T_L = current_T_U
+            current_T_U = old_T_U
+
+            # reset lower
+            current_delta_L = current_delta_U
+            # recalculate upper
+            current_delta_U = delta(current_T_U, v, ham_P, ham_N, fermi_energy=ef,
+                                    H=0, theta=theta, phi=phi)
+
+        elif abs(current_delta_L) > abs(current_delta_U):
+            old_T_L = current_T_L
+            current_T_L = (current_T_L + current_T_U) / 2
+            current_delta_L = delta(
+                current_T_L, v, ham_P, ham_N, fermi_energy=ef, H=0, theta=theta, phi=phi)
+
+        else:
+            old_T_U = current_T_U
+            current_T_U = (current_T_L + current_T_U) / 2
+            current_delta_U = delta(
+                current_T_U, v, ham_P, ham_N, fermi_energy=ef, H=0, theta=theta, phi=phi)
+
+        # print("[{}, {}]".format(
+         #   current_delta_L, current_delta_U))
+
+        iterations += 1
+
+    if iterations == MAX_BRACKET_STEPS-1:
+        print("Reached max iterations")
+
+    return [current_T_L, current_T_U]
 
 def find_v(useToy=False):
     
@@ -508,52 +569,70 @@ def get_DOS(ham, energy_range = (-0.15,1.5), energy_steps = 165, save_data=False
     if save_data:
         temp_data = np.dstack((energies, density_of_state_array, carrier_density))[0]
         
-        np.save("Data/DOS_data_{}.csv".format(RESOLUTION), temp_data)
+        np.save("Data/DOS_data_{}_{}".format(RESOLUTION, "DFT" if FERMI_ENERGY == -0.96 else "TOY"), temp_data)
     
     return energies, density_of_state_array, carrier_density
 
 def main():
     
-    hamk_P, hamk_N, v = find_v(useToy=True)
+    hamk_P, hamk_N, v = find_v(useToy=False)
     
-    #k = get_k_path(DEFAULT_PATH, RESOLUTION)
     
-    #hamr_obs =get_hamr()
-    
-    #hamk_P = find_hamk(k, *hamr_obs)
-    
-    print(hamk_P.shape)
+    #print(hamk_P.shape)
+    #v= -0.357352742
     print(v)
     
-    #T, H, HL, HU = bracketing(hamk_P, hamk_N, v)
+    Ts = fermi_level_bracketing(hamk_P, hamk_N, v, ef =  -0.93)
     
-    e, d, c = get_DOS(hamk_P,save_data=True, energy_range = (-0.1,0.12), energy_steps=20)
+    print(Ts)
+    
+    # e, d, c = np.load("Data/DOS_data_300_DFT.npy").T
+
+    # #get_DOS(hamk_P,save_data=True, energy_range = (-0.15,1.25), energy_steps=100)
+    
+    # #
+    
+   
+    # for v in np.linspace(-0.3, -0.53,10):
+    #     TC = BCS_critical_T(d, v)
+    #     plt.plot(e, TC,'--')
+        
+    #     print(TC[-1] - TC[0])
     
     
-    TC = BCS_critical_T(d, v, 262.3 *k_B)
+        
     
-    plt.plot(fermi_levels[:,0] - FERMI_ENERGY, fermi_levels[:,1],'x')
-    plt.plot(e, TC,'--')
+    # d_from_fermi = -1 / (np.log(fermi_levels[:,1] / (1.134 * DEBYE_TEMP))* 0.41)
     
+    # #op.curve_fit(BCS_critical_T, d, fermi_levels[:,1])
+
     
+    # #plt.plot(fermi_levels[:,0] - FERMI_ENERGY, d_from_fermi,'xk')
+    # #plt.plot(e,d)
+    
+    # plt.xlim([-0.2,0.2])
+    # #plt.ylim([0.3,1])
+
+
     '''
+    
     fig, ax1 = plt.subplots()
     
     
-    ax1.plot(energies, doss)
+    ax1.plot(e, d)
     ax1.set_xlabel("energy / eV")
     ax1.set_ylabel("DOS")
     
     ax2 = ax1.twinx()
     
     ax2.set_ylabel("Carrier density")
-    ax2.plot(energies, carrier_density,'orange')
+    ax2.plot(e, c,'orange')
     #plt.vlines(0.04,0.4,0.5,label="0.04", colors='red')
     #plt.vlines(-0.15,0.0,0.1,label="-0.15", colors='purple')
     #plt.vlines(0.12,0.45,.6,label="0.12", colors='green')
     #plt.legend()
-    '''
-        
+    
+        '''
     '''
     
     inp = input("Next sigma = ")
