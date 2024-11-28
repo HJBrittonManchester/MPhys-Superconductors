@@ -6,17 +6,19 @@ Created on Tue Nov 12 11:12:32 2024
 """
 import numpy as np
 import scipy.linalg as LA
+from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 import scipy.constants
-from matplotlib import colors
+import time
 
 
-## our files
+# our files
 from k_tools import get_k_path, get_k_block, get_k_path_spacing
 from phase_diagram import H_0, a
+from GL_models import par_field_gl_model
 
 
-ham_file = "MoS2/MoS2_hr_new.dat"
+ham_file = "Data/MoS2_hr.dat"
 
 # constants
 MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
@@ -24,33 +26,34 @@ k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
 DEBYE_ENERGY = 0.022  # 0.022  # eV
-FERMI_ENERGY = -0.75 #-0.96  # eV
+FERMI_ENERGY = -0.85  # -0.96  # eV
+START_T_L = 4.8
+START_T_U = 5.2
+FERMI_ENERGY_RANGE = [-0.77, -0.76, -0.75, -0.74, -0.73]  # in increasing order
 
 # Default field allignment - x direction
 PHI_DEFAULT = 0
 THETA_DEFAULT = np.pi / 2
 
 # Simulation settings
-RESOLUTION = 300
-NUM_FREQ = 500
+RESOLUTION = 1000
+NUM_FREQ = 1000
 
 # k - path settings
 DEFAULT_PATH = ['K', 'G', 'K']
 
 # Full BZ settings
-PRESELECTION_BOXSIZE = 0.22  # set to -1 to use full area but, 0.22 works well
+PRESELECTION_BOXSIZE = 0.3  # set to -1 to use full area but, 0.22 works well
 
 
 # Bracket settings
-BRACKET_TOLERANCE = 1e-6
-MAX_BRACKET_STEPS = 25
-TEMP_START = 6.4
-TEMP_STOP = 2
-TEMP_STEPS = 10
-H_U_START = 60
-H_L_START = -1
-
-
+BRACKET_TOLERANCE = 1e-5
+MAX_BRACKET_STEPS = 30
+TEMP_START = 7
+TEMP_STOP = 5
+TEMP_STEPS = 15
+H_U_START = 10
+H_L_START = .01
 
 
 ################################################################
@@ -63,6 +66,12 @@ def epsilon(hamk):
     return eigs
 
 
+def get_eig_vec(hamk):
+    return np.array([LA.eig(hamk[:, :, i])[1]
+                     for i in range(hamk.shape[2])], dtype=complex)
+
+
+"""
 def projection_z(hamk, band=0):
     eigvecs = np.array([LA.eig(hamk[:, :, i])[1]
                         for i in range(hamk.shape[2])], dtype=complex)
@@ -74,11 +83,6 @@ def projection_z(hamk, band=0):
     # print(proj[:, 0] - proj[:, 1])
 
     return proj
-
-
-def get_eig_vec(hamk):
-    return np.array([LA.eig(hamk[:, :, i])[1]
-                     for i in range(hamk.shape[2])], dtype=complex)
 
 
 def projection_x(hamk, band=0):
@@ -99,10 +103,10 @@ def projection_y(hamk, band=0):
         eigvecs[:, :, 1] * eigvecs[:, :, 0].conj() * 1j
 
     return proj
-
+"""
 #############################################################
 # hamiltonian related functions
-
+"""
 def get_hamr():
 
     ndeg = np.array([])
@@ -152,6 +156,7 @@ def find_hamk(k, hamr, ndeg, rvec):
                 complex(np.cos(phase), -np.sin(phase)) / ndeg[j]
 
     return ham
+"""
 
 
 def get_toy_ham(b):
@@ -159,14 +164,15 @@ def get_toy_ham(b):
     kx = (b[0] + 2 * b[1]) / (a * np.sqrt(3))
     ky = b[0] / a
 
-    H = np.zeros((2, 2, len(kx)), dtype=complex)
+    ham = np.zeros((2, 2, len(kx)), dtype=complex)
 
     for i in range(len(kx)):
-        H[:, :, i] = H_0(kx[i], ky[i])
+        ham[:, :, i] = H_0(kx[i], ky[i])
 
-    return H
+    return ham
 
 
+"""
 def get_bands_on_path(path=DEFAULT_PATH):
 
     hamr, ndeg, rvec = get_hamr()  # Read in the real-space hamiltonian
@@ -182,6 +188,7 @@ def get_bands_on_path(path=DEFAULT_PATH):
     energy_real = epsilon(hamk_pert)
 
     return energy_real, energy_toy
+"""
 
 
 def vary_ham(ham, ef=FERMI_ENERGY, H=0, theta=THETA_DEFAULT, phi=PHI_DEFAULT):
@@ -191,18 +198,15 @@ def vary_ham(ham, ef=FERMI_ENERGY, H=0, theta=THETA_DEFAULT, phi=PHI_DEFAULT):
     new_ham[1, 1, :] = ham[1, 1, :] - ef + H * MU_B * np.cos(theta)
 
     new_ham[0, 1, :] = ham[0, 1, :] - H * MU_B * \
-        complex(np.cos(phi), np.sin(phi)) * np.sin(theta)
-    new_ham[1, 0, :] = ham[1, 0, :] - H * MU_B * \
         complex(np.cos(phi), -np.sin(phi)) * np.sin(theta)
-
-    # print(new_ham[0, 1, 10])
-
-    # print(H * MU_B * complex(np.cos(phi), np.sin(phi)) * np.sin(theta))
+    new_ham[1, 0, :] = ham[1, 0, :] - H * MU_B * \
+        complex(np.cos(phi), np.sin(phi)) * np.sin(theta)
 
     return new_ham
 
 ##############################################################################
 # Susceptibility functions
+
 
 def get_greens_function(ham, freq):
     greens = np.zeros_like(ham, dtype=complex)
@@ -238,43 +242,40 @@ def susc(ham_N, ham_P, T, for_plot=False):
 
     return np.real_if_close(k_B * T / (RESOLUTION**2) * np.sum(chi_0), 1e-4)
 
+
 ##############################################################################
 # DOS functions
-
+"""
 def DOS(E, hamk, res=RESOLUTION):
-    
+
     ham = vary_ham(hamk)
-    
+
     E_k = epsilon(ham).flatten()
-    
+
     print(E_k)
-    
+
     sigma = 1e-3
-    
+
     deltas = (np.exp(-(E - E_k)**2 /(2* sigma**2) ) / (sigma * np.sqrt(2*np.pi))).sum()
-    
-    
+
+
     return deltas / (RESOLUTION * RESOLUTION)
-    
-    
-
-
+    """
 
 
 ##############################################################################
 # Main Utilities
 
 
-def delta(T,  v,   hamk_P, hamk_N, fermi_energy = FERMI_ENERGY, H=0, phi=PHI_DEFAULT, theta=THETA_DEFAULT):
+def delta(T, v, hamk_P, hamk_N, ef=FERMI_ENERGY, H=0, phi=PHI_DEFAULT, theta=THETA_DEFAULT):
 
-    hamk_pert_N = vary_ham(hamk_N, fermi_energy, H, theta=theta, phi=phi)
-
-    hamk_pert_P = vary_ham(hamk_P, fermi_energy, H, theta=theta, phi=phi)
+    hamk_pert_N = vary_ham(hamk_N, ef=ef, H=H, theta=theta, phi=phi)
+    hamk_pert_P = vary_ham(hamk_P, ef=ef, H=H, theta=theta, phi=phi)
 
     return 1 - v * susc(hamk_pert_N, hamk_pert_P, T)
 
 
-def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START, start_H_L=H_L_START,
+def braket(ham_P, ham_N, T, v, ef=FERMI_ENERGY, start_H_U=H_U_START, start_H_L=H_L_START,
            theta=THETA_DEFAULT, phi=PHI_DEFAULT, tol=BRACKET_TOLERANCE):
 
     # Larger H => +ve Delta
@@ -287,26 +288,26 @@ def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START,
     current_H_U = start_H_U
     current_H_L = start_H_L
 
-    current_delta_U = delta(T, v,  ham_P, ham_N, fermi_energy,
+    current_delta_U = delta(T, v,  ham_P, ham_N, ef=ef,
                             H=current_H_U, theta=theta, phi=phi)
-    current_delta_L = delta(T, v,  ham_P, ham_N, fermi_energy,
+    current_delta_L = delta(T, v,  ham_P, ham_N, ef=ef,
                             H=current_H_L, theta=theta, phi=phi)
 
-    # print("Δ_max = {}, Δ_min = {}".format(
+    # print("Î”_max = {}, Î”_min = {}".format(
     #    current_delta_U, current_delta_L))
 
     if current_delta_U < 0:
         print("Upper H too low")
-        return start_H_L
+        return [start_H_L, start_H_U]
     elif current_delta_L > 0:
         print("Lower H too high")
-        return 0
+        return [0, 0]
 
     old_H_U = 100
     old_H_L = 0
 
     while abs(current_delta_L) > tol and abs(current_delta_U) > tol and iterations < MAX_BRACKET_STEPS:
-        # print("Δ_max = {}, Δ_min = {}".format(
+        # print("Î”_max = {}, Î”_min = {}".format(
         #    current_delta_U, current_delta_L))
 
         if current_delta_L > 0 and current_delta_U > 0:
@@ -318,7 +319,8 @@ def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START,
             # reset upper
             current_delta_U = current_delta_L
             # recalculate lower
-            delta(T, v,  ham_P, ham_N, fermi_energy, H=current_H_L, theta=theta, phi=phi)
+            current_delta_L = delta(T, v,  ham_P, ham_N, ef=ef,
+                                    H=current_H_L, theta=theta, phi=phi)
 
         elif current_delta_L < 0 and current_delta_U < 0:
             print("both -ve sign")
@@ -328,21 +330,21 @@ def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START,
 
             # reset lower
             current_delta_L = current_delta_U
-            # recalculate Upper
+            # recalculate upper
             current_delta_U = delta(
-                T, v,  ham_P, ham_N, fermi_energy, H=current_H_U, theta=theta, phi=phi)
+                T, v,  ham_P, ham_N, ef=ef, H=current_H_U, theta=theta, phi=phi)
 
         elif abs(current_delta_L) > abs(current_delta_U):
             old_H_L = current_H_L
             current_H_L = (current_H_L + current_H_U) / 2
             current_delta_L = delta(
-                T, v,  ham_P, ham_N, fermi_energy, H=current_H_L, theta=theta, phi=phi)
+                T, v,  ham_P, ham_N, ef=ef, H=current_H_L, theta=theta, phi=phi)
 
         else:
             old_H_U = current_H_U
             current_H_U = (current_H_L + current_H_U) / 2
             current_delta_U = delta(
-                T, v,  ham_P, ham_N, fermi_energy, H=current_H_U, theta=theta, phi=phi)
+                T, v,  ham_P, ham_N, ef=ef, H=current_H_U, theta=theta, phi=phi)
 
         iterations += 1
 
@@ -352,43 +354,109 @@ def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START,
     return [current_H_L, current_H_U]
 
 
-def bracketing(ham_P, ham_N, v):
-    T_array = np.linspace(TEMP_START, TEMP_STOP, TEMP_STEPS)
+def bracketing(ham_P, ham_N, v, ef=FERMI_ENERGY):
+    # print(ef)
+    T_smallarray = np.linspace(7, 5, TEMP_STEPS)
+    T_largearray = np.linspace(TEMP_START, TEMP_STOP, TEMP_STEPS)
+    T_array = np.append(T_smallarray, T_largearray)
     H_array = []
-    
     lower_bounds = []
     upper_bounds = []
-    
-    for t_index in range(TEMP_STEPS):
-        temp_T = T_array[t_index]
-        
-        
-        bounds = braket(ham_P.copy(), ham_N.copy(), temp_T, v)
-        
-        mean_H = (bounds[0] + bounds[1])/2
-        
-        H_array.append(mean_H)
-        lower_bounds.append(bounds[0])
-        upper_bounds.append(bounds[1])
 
-        print("[{}, {}], bounds: [{}, {}],".format(mean_H, temp_T, bounds[0], bounds[1]))
-        
+    for t_index in range(2*TEMP_STEPS):
+        temp_T = T_array[t_index]
+
+        bounds = braket(ham_P.copy(), ham_N.copy(), temp_T, v, ef=ef)
+
+        mean_H = (bounds[0] + bounds[1]) / 2
+
+        H_array.append([mean_H])
+        lower_bounds.append([bounds[0]])
+        upper_bounds.append([bounds[1]])
+
+        print("[{}, {}], bounds: [{}, {}],".format(
+            mean_H, temp_T, bounds[0], bounds[1]))
+
     return T_array, np.array(H_array), np.array(lower_bounds), np.array(upper_bounds)
 
 
-def find_v(useToy=False):
-    
-    preselected_kpoints = get_k_block(RESOLUTION, PRESELECTION_BOXSIZE)
+def fermi_level_bracketing(ham_P, ham_N, v, ef=FERMI_ENERGY, start_T_L=7, start_T_U=8.3,
+                           theta=THETA_DEFAULT, phi=PHI_DEFAULT, tol=BRACKET_TOLERANCE):
+    iterations = 0
 
+    current_T_L = start_T_L
+    current_T_U = start_T_U
+    current_delta_L = delta(current_T_L, v, ham_P, ham_N, ef=ef,
+                            H=0, theta=theta, phi=phi)
+    current_delta_U = delta(current_T_U, v, ham_P, ham_N, ef=ef,
+                            H=0, theta=theta, phi=phi)
+    old_T_L = 5
+    old_T_U = 7
+
+    while abs(current_delta_L) > tol and abs(current_delta_U) > tol and iterations < MAX_BRACKET_STEPS:
+
+        if current_delta_L > 0 and current_delta_U > 0:
+            print("both +ve sign")
+
+            current_T_U = current_T_L
+            current_T_L = old_T_L
+
+            # reset upper
+            current_delta_U = current_delta_L
+            # recalculate lower
+            current_delta_L = delta(current_T_L, v, ham_P, ham_N, ef=ef,
+                                    H=0, theta=theta, phi=phi)
+
+        elif current_delta_L < 0 and current_delta_U < 0:
+            print("both -ve sign")
+
+            current_T_L = current_T_U
+            current_T_U = old_T_U
+
+            # reset lower
+            current_delta_L = current_delta_U
+            # recalculate upper
+            current_delta_U = delta(current_T_U, v, ham_P, ham_N, ef=ef,
+                                    H=0, theta=theta, phi=phi)
+
+        elif abs(current_delta_L) > abs(current_delta_U):
+            old_T_L = current_T_L
+            current_T_L = (current_T_L + current_T_U) / 2
+            current_delta_L = delta(
+                current_T_L, v, ham_P, ham_N, ef=ef, H=0, theta=theta, phi=phi)
+
+        else:
+            old_T_U = current_T_U
+            current_T_U = (current_T_L + current_T_U) / 2
+            current_delta_U = delta(
+                current_T_U, v, ham_P, ham_N, ef=ef, H=0, theta=theta, phi=phi)
+
+        # print("[{}, {}]".format(
+         #   current_delta_L, current_delta_U))
+
+        iterations += 1
+
+    if iterations == MAX_BRACKET_STEPS-1:
+        print("Reached max iterations")
+
+    return [current_T_L, current_T_U]
+
+
+def find_v(ef=FERMI_ENERGY, useToy=True):
+
+    preselected_kpoints = get_k_block(RESOLUTION, PRESELECTION_BOXSIZE)
+    """
     if useToy:
         hamk_P = get_toy_ham(preselected_kpoints)
     else:
         hamr, ndeg, rvec = get_hamr()  # Read in the real-space hamiltonian
         hamk_P = find_hamk(preselected_kpoints, hamr, ndeg, rvec)  # FT the hamiltonian
+    """
 
-    
+    # to compare against debye energy
+    hamk_P = get_toy_ham(preselected_kpoints)
 
-    hamk_pert_P = vary_ham(hamk_P)  # Adjust the fermi level
+    hamk_pert_P = vary_ham(hamk_P, ef=ef)  # Adjust the parameters
 
     # Find the mean of energy eigen values
     energy = epsilon(hamk_pert_P).mean(axis=1)
@@ -397,24 +465,76 @@ def find_v(useToy=False):
     significant_kpoints_indices = np.where(abs(energy) < DEBYE_ENERGY)
 
     # Find -ve ham to significant k points
-    significant_kpoints = preselected_kpoints[:, significant_kpoints_indices][:, 0, :]
-    
+    significant_kpoints = preselected_kpoints[:,
+                                              significant_kpoints_indices][:, 0, :]
 
+    """
     if useToy:
         hamk_N = get_toy_ham(-significant_kpoints)
     else:
         hamk_N = find_hamk(-significant_kpoints, hamr, ndeg, rvec)
+    """
 
+    hamk_N = get_toy_ham(-significant_kpoints)
 
     # correct +ve ham to significant k points
     hamk_P = hamk_P[:, :, significant_kpoints_indices][:, :, 0]
-    hamk_pert_P = vary_ham(hamk_P)  # reset +ve
-    hamk_pert_N = vary_ham(hamk_N)
+    hamk_pert_P = vary_ham(hamk_P, ef=ef)  # reset +ve
+    hamk_pert_N = vary_ham(hamk_N, ef=ef)
 
     v = 1/susc(hamk_pert_N, hamk_pert_P, 6.5)
 
     return hamk_P, hamk_N, v
 
+
+##############################################################################
+# For plotting
+
+def plot_phase_diagram_fitted(T, H, H_L, H_U, plot_fit=False, fit_range=2):
+
+    fig, ax = plt.subplots(figsize=(5, 5), dpi=400)
+
+    errors = H.copy()
+    errors[:, 0] = abs(H_U[:, 0] - H_L[:, 0])
+
+    ax.errorbar(T, H[:, 0], errors[:, 0], fmt='r-',
+                label="Phase Diagram, In-Plane H-Field ")
+
+    ax.set_ylabel(r"$\mu_{0} H_{c2}$ (T)")
+    ax.set_xlabel(r"$T$ (K)")
+    ax.set_xlim((0, 7))
+    ax.set_ylim((0, 85))
+
+    if plot_fit:
+
+        T_red = T[:len(T)//fit_range]
+        H_red = H[:len(H)//fit_range]
+
+        params = curve_fit(par_field_gl_model, T_red, H_red)
+        print(params)
+
+        x = np.linspace(0, T[0], 1000)
+
+        ax.plot(x, par_field_gl_model(x, params[0][0]),
+                'm--', label="In-Plane G-L Model")
+
+        ax.set_xticks([0, 1, 2, 3, 4, 5, 6, 6.5, 7])
+        ax.set_xticklabels([0, 1, 2, 3, 4, 5, 6, r"$T_{c}$", 7])
+        # Hc2 values from optimised parameter:
+        ax.set_yticks([0, 20, 40, 60, params[0][0], 80])
+        ax.set_yticklabels(
+            [0, 20, 40, 60, r"$H_{c2}^{âˆ¥}$", 80])
+
+        plt.legend(loc="upper right", fontsize=7)
+
+        return params
+
+    plt.legend(loc="upper right", fontsize=7)
+
+    return None
+
+
+"""
 def plot_projections(path = DEFAULT_PATH, res =RESOLUTION):
     hamr_obs = get_hamr()
     k = get_k_path(path, res)
@@ -464,15 +584,65 @@ def plot_projections(path = DEFAULT_PATH, res =RESOLUTION):
 
 
 def main():
-    
+
     hamk_P, hamk_N, v = find_v()
     print(v)
 
-    #T, H, HL, HU = bracketing(hamk_P, hamk_N, v)
-    
-    print(DOS(0, hamk_P))
-    
-    
+    T, H, HL, HU = bracketing(hamk_P, hamk_N, v)
+    print(T)
 
+    return None
 
 main()
+"""
+
+time_0 = time.time()
+
+hamk_P, hamk_N, v = find_v(ef=FERMI_ENERGY)  # find_v(ef=FERMI_ENERGY)
+#v = -0.8375575503135118
+# print(v)
+v = -0.8280025754528594  # N = 1000, Nfreq = 1000
+# v = -0.8148490911693423  # N = 200, Nfreq = 500
+# v = -0.8307493217674475  # N = 1200, Nfreq = 1000
+
+T_bounds = fermi_level_bracketing(
+    hamk_P, hamk_N, v, start_T_L=START_T_L, start_T_U=START_T_U)
+T_crit = np.mean(T_bounds)
+print("[{}, {}], ".format(FERMI_ENERGY, T_crit))
+
+"""
+r = np.zeros((len(FERMI_ENERGY_RANGE), TEMP_STEPS, 2))
+fig, ax = plt.subplots(figsize=(5, 5), dpi=400)
+
+for i in range(len(FERMI_ENERGY_RANGE)):
+    print(str(i+1) + " out of " + str(len(FERMI_ENERGY_RANGE)))
+    # = FERMI_ENERGY_RANGE[i]
+    hamk_P, hamk_N, v = find_v(ef=FERMI_ENERGY_RANGE[i])
+    v = -0.814849091169342  # fix v
+    # , ef=FERMI_ENERGY_RANGE[i])
+    values_i = bracketing(hamk_P, hamk_N, v, ef=FERMI_ENERGY_RANGE[i])
+
+    for j in range(TEMP_STEPS):
+        r[i][j, :] = [values_i[0][j], values_i[1][j][0]]
+        print("[{}, {}],".format(r[i][j, 0], r[i][j, 1]))
+
+    ax.plot(r[i][:, 0], r[i][:, 1],
+            label=r"$E_{F}$ = " + str(0.01*i-max(FERMI_ENERGY_RANGE)) + " eV")
+
+    ax.set_ylabel(r"$\mu_{0} H_{c2}$ (T)")
+    ax.set_xlabel(r"$T$ (K)")
+    ax.set_xlim((0, 7))
+    ax.set_ylim((0, 85))
+    plt.legend(loc="upper right", fontsize=8)
+"""
+
+
+"""
+values = bracketing(hamk_P, hamk_N, v)
+plot_phase_diagram_fitted(*values)
+
+for i in range(len(values[0])):
+    print("[{}, {}],".format(
+        values[0][i], values[1][i][0]))
+"""
+print("Runtime: {} s".format(time.time() - time_0))
