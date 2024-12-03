@@ -25,16 +25,16 @@ k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
 DEBYE_TEMP = 262.3 # K
-DEBYE_ENERGY = 9990.022  # eV
-FERMI_ENERGY = -0.96  # eV
+DEBYE_ENERGY = 0.022  # eV
+FERMI_ENERGY =  -0.958  # eV
 
 # Default field allignment - x direction
 PHI_DEFAULT = 0
 THETA_DEFAULT = np.pi / 2
 
 # Simulation settings
-RESOLUTION = 100
-NUM_FREQ = 500
+RESOLUTION = 300
+NUM_FREQ = 1000
 
 # k - path settings
 DEFAULT_PATH = ['G', 'K', 'G']  
@@ -44,13 +44,13 @@ PRESELECTION_BOXSIZE = -1 # 0.32  # set to -1 to use full area but, 0.22 works w
 
 
 # Bracket settings
-BRACKET_TOLERANCE = 1e-6
+BRACKET_TOLERANCE = 2e-4
 MAX_BRACKET_STEPS = 25
-TEMP_START = 9
-TEMP_STOP = 6.5
-TEMP_STEPS = 50
-H_U_START = 60
-H_L_START = -1
+TEMP_START = 0
+TEMP_STOP = 80
+TEMP_STEPS = 1
+H_U_START = 100
+H_L_START = 5
 
 
 fermi_levels = np.array([[-0.85, 4.923828125],
@@ -75,7 +75,25 @@ fermi_levels = np.array([[-0.85, 4.923828125],
                          [-0.66, 7.9560546875],
                          [-0.65, 7.987060546875002]])
 
+ferm_dos = np.array([0.5948702070321652, 0.5994336507134578, 0.6040700884245799, 0.6087821087385413, 0.6135717600141024, 0.6184411724211, 0.6233925647045356, 0.628428248061979, 0.6335506300506671, 0.6387622192878775, 0.6440656330230822, 0.6494636067364429, 0.6549589913955373, 0.6605547236313932, 0.6662538263655187, 0.672059553501249, 0.677975498819494, 0.6840051664225999, 0.6901515669697541, 0.696418518681965, 0.7028116685019301])
 
+
+
+dft_levels = np.array( [[-0.86, 9.020751953125], 
+                             [-0.87, 8.8232421875], 
+                             [-0.88, 8.550195312500001], 
+                             [-0.89, 8.232421875],
+                             [-0.9, 7.9638671875], 
+                             [-0.91, 7.7119140625], 
+                             [-0.92, 7.46826171875],
+                             [-0.93, 7.08740234375], 
+                             [-0.94, 6.8017578125], 
+                             [-0.95, 6.771630859375], 
+                             [-0.96, 6.499957275390624], 
+                             [-0.97, 6.364331054687499],
+                             [-0.98, 6.15185546875], 
+                             [-0.99, 5.97890625], 
+                             [-1, 5.855468749999999], ])
 
 
 ################################################################
@@ -312,13 +330,13 @@ def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START,
     current_H_U = start_H_U
     current_H_L = start_H_L
 
-    current_delta_U = delta(T, v,  ham_P, ham_N, fermi_energy,
-                            H=current_H_U, theta=theta, phi=phi)
-    current_delta_L = delta(T, v,  ham_P, ham_N, fermi_energy,
-                            H=current_H_L, theta=theta, phi=phi)
+    current_delta_U = delta(current_H_U, v,  ham_P, ham_N, fermi_energy,
+                            H=T, theta=theta, phi=phi)
+    current_delta_L = delta(current_H_L, v,  ham_P, ham_N, fermi_energy,
+                            H=T, theta=theta, phi=phi)
 
-    # print("Δ_max = {}, Δ_min = {}".format(
-    #    current_delta_U, current_delta_L))
+    #print("Δ_max = {}, Δ_min = {}".format(
+    #  current_delta_U, current_delta_L))
 
     if current_delta_U < 0:
         print("Upper H too low")
@@ -331,8 +349,8 @@ def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START,
     old_H_L = 0
 
     while abs(current_delta_L) > tol and abs(current_delta_U) > tol and iterations < MAX_BRACKET_STEPS:
-        # print("Δ_max = {}, Δ_min = {}".format(
-        #    current_delta_U, current_delta_L))
+        print("Δ_max = {}, Δ_min = {}".format(
+           current_delta_U, current_delta_L))
 
         if current_delta_L > 0 and current_delta_U > 0:
             print("both +ve sign")
@@ -343,7 +361,7 @@ def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START,
             # reset upper
             current_delta_U = current_delta_L
             # recalculate lower
-            delta(T, v,  ham_P, ham_N, fermi_energy, H=current_H_L, theta=theta, phi=phi)
+            current_delta_L = delta(current_H_L, v,  ham_P, ham_N, fermi_energy, H=T, theta=theta, phi=phi)
 
         elif current_delta_L < 0 and current_delta_U < 0:
             print("both -ve sign")
@@ -355,19 +373,19 @@ def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START,
             current_delta_L = current_delta_U
             # recalculate Upper
             current_delta_U = delta(
-                T, v,  ham_P, ham_N, fermi_energy, H=current_H_U, theta=theta, phi=phi)
+                current_H_U, v,  ham_P, ham_N, fermi_energy, H=T, theta=theta, phi=phi)
 
         elif abs(current_delta_L) > abs(current_delta_U):
             old_H_L = current_H_L
             current_H_L = (current_H_L + current_H_U) / 2
             current_delta_L = delta(
-                T, v,  ham_P, ham_N, fermi_energy, H=current_H_L, theta=theta, phi=phi)
+                current_H_L, v,  ham_P, ham_N, fermi_energy, H=T, theta=theta, phi=phi)
 
         else:
             old_H_U = current_H_U
             current_H_U = (current_H_L + current_H_U) / 2
             current_delta_U = delta(
-                T, v,  ham_P, ham_N, fermi_energy, H=current_H_U, theta=theta, phi=phi)
+                current_H_U, v,  ham_P, ham_N, fermi_energy, H=T, theta=theta, phi=phi)
 
         iterations += 1
 
@@ -464,6 +482,9 @@ def fermi_level_bracketing(ham_P, ham_N, v, ef=FERMI_ENERGY, start_T_L=6, start_
 
 def find_v(useToy=False):
     
+    hamk_P = np.load("Data/DFT_H0_300_P.npy")
+    '''
+    
     preselected_kpoints = get_k_block(RESOLUTION, PRESELECTION_BOXSIZE)
 
     if useToy:
@@ -472,7 +493,7 @@ def find_v(useToy=False):
         hamr, ndeg, rvec = get_hamr()  # Read in the real-space hamiltonian
         hamk_P = find_hamk(preselected_kpoints, hamr, ndeg, rvec)  # FT the hamiltonian
 
-    
+    '''
 
     hamk_pert_P = vary_ham(hamk_P)  # Adjust the fermi level
 
@@ -483,17 +504,23 @@ def find_v(useToy=False):
     significant_kpoints_indices = np.where(abs(energy) < DEBYE_ENERGY)
 
     # Find -ve ham to significant k points
-    significant_kpoints = preselected_kpoints[:, significant_kpoints_indices][:, 0, :]
+    #significant_kpoints = preselected_kpoints[:, significant_kpoints_indices][:, 0, :]
     
+    '''
 
     if useToy:
         hamk_N = get_toy_ham(-significant_kpoints)
     else:
         hamk_N = find_hamk(-significant_kpoints, hamr, ndeg, rvec)
+        
+    '''
+    hamk_N = np.load("Data/DFT_H0_300_N.npy")
+    hamk_N = hamk_N[:, :, significant_kpoints_indices][:, :, 0]
 
 
     # correct +ve ham to significant k points
     hamk_P = hamk_P[:, :, significant_kpoints_indices][:, :, 0]
+    
     hamk_pert_P = vary_ham(hamk_P)  # reset +ve
     hamk_pert_N = vary_ham(hamk_N)
 
@@ -573,47 +600,94 @@ def get_DOS(ham, energy_range = (-0.15,1.5), energy_steps = 165, save_data=False
     
     return energies, density_of_state_array, carrier_density
 
+def plot_selection(ham, selection_box):
+    
+    x = y = np.linspace(0, 1, 300)
+    x,y = np.meshgrid(x,y)
+    mask = np.where(np.logical_or(np.logical_or(y < (1/3 - selection_box/2) , y > (1/3 + selection_box/ 2)) , np.logical_or( x < (1/3 - selection_box/2) , x > (1/3 + selection_box/2))), 0,1)
+    mask += np.where(np.logical_or(np.logical_or(y < (2/3 - selection_box/2) , y > (2/3 + selection_box/ 2)) , np.logical_or( x < (2/3 - selection_box/2) , x > (2/3 + selection_box/2))), 0,1)
+    
+    E = (epsilon(ham).mean(axis=-1)).reshape(300,300)
+    plt.pcolor(x,y,E)
+    plt.colorbar(label="Energy / eV")
+    
+    plt.contourf(x,y,E,levels=[0.048, 0.092], colors="red")
+    plt.pcolor(x,y,mask, cmap="binary", alpha = 0.05)
+    plt.xlabel(r"$b_1$")
+    plt.ylabel(r"$b_2$")
+    
+
 def main():
     
-    hamk_P, hamk_N, v = find_v(useToy=False)
+    for i in range(1):
+        
+        hamk_P, hamk_N, v = find_v(useToy=False)
+        print(v)
     
+    
+        v = -1.2547551321386283 #-0.3788176484109553
+    
+        
+        bracketing(hamk_P, hamk_N, v)    
+    
+
     
     #print(hamk_P.shape)
     #v= -0.357352742
-    print(v)
+    #print(v)
     
-    Ts = fermi_level_bracketing(hamk_P, hamk_N, v, ef =  -0.93)
+    #Ts = fermi_level_bracketing(hamk_P, hamk_N, v, ef =  -0.93)
+    #print(bracketing(hamk_P, hamk_N, v))
     
-    print(Ts)
     
-    # e, d, c = np.load("Data/DOS_data_300_DFT.npy").T
-
-    # #get_DOS(hamk_P,save_data=True, energy_range = (-0.15,1.25), energy_steps=100)
+    e, d, c = np.load("Data/DOS_data_300_DFT.npy").T
     
-    # #
     
-   
-    # for v in np.linspace(-0.3, -0.53,10):
-    #     TC = BCS_critical_T(d, v)
-    #     plt.plot(e, TC,'--')
+    '''
+    exp_dos = []
+    for fe in fermi_levels[:,0] - FERMI_ENERGY:
+        exp_dos.append(DOS(fe, hamk_P))
         
-    #     print(TC[-1] - TC[0])
+    #print(exp_dos)
     
+    exp_dos = np.array(exp_dos)
+    '''
+    
+
+    #get_DOS(hamk_P,save_data=True, energy_range = (-0.15,.15), energy_steps=100)
+    
+
+    
+    
+    
+    for v in np.linspace(-0.3, -1.25,5):
+        TC = BCS_critical_T(d, v)
+        plt.plot(e, TC,'-', label=r"V = {:.2g}".format(v))
+            
     
         
     
-    # d_from_fermi = -1 / (np.log(fermi_levels[:,1] / (1.134 * DEBYE_TEMP))* 0.41)
     
-    # #op.curve_fit(BCS_critical_T, d, fermi_levels[:,1])
+    #V = op.curve_fit(lambda x,y : BCS_critical_T(x,y), ferm_dos, fermi_levels[:,1],[-0.35])[0][0]
+    
+    #print(V)
 
     
-    # #plt.plot(fermi_levels[:,0] - FERMI_ENERGY, d_from_fermi,'xk')
-    # #plt.plot(e,d)
+    plt.plot(dft_levels[:,0]- FERMI_ENERGY , dft_levels[:,1],'xk')
+    #plt.plot(fermi_levels[:,0] - FERMI_ENERGY, BCS_critical_T(ferm_dos, V), label="Fitted V = {:.4g}".format(V))
     
-    # plt.xlim([-0.2,0.2])
-    # #plt.ylim([0.3,1])
-
-
+    
+    plt.hlines(6.5,-0.3,0,linestyles='dashed',alpha=0.5)
+    plt.vlines(0,0,6.5,linestyles='dashed',alpha=0.5)
+    
+    plt.xlim([-0.1,0.06])
+    plt.ylim([0.,10])
+    plt.legend()
+    
+    plt.xlabel("Fermi energy / eV")
+    plt.ylabel("Critical Temperature / K")
+    
+    
     '''
     
     fig, ax1 = plt.subplots()
@@ -632,7 +706,7 @@ def main():
     #plt.vlines(0.12,0.45,.6,label="0.12", colors='green')
     #plt.legend()
     
-        '''
+    '''
     '''
     
     inp = input("Next sigma = ")
