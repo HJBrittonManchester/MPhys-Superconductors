@@ -8,7 +8,6 @@ import numpy as np
 import scipy.linalg as LA
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
-from matplotlib import colors
 import scipy.constants
 import time
 
@@ -27,7 +26,7 @@ k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
 DEBYE_ENERGY = 0.022  # 0.022  # eV
-FERMI_ENERGY = -0.96  # -0.96  # eV
+FERMI_ENERGY = -0.75  # -0.96  # eV
 START_T_L = 0.5
 START_T_U = 6.5
 FERMI_ENERGY_RANGE = [-0.77, -0.76, -0.75, -0.74, -0.73]  # in increasing order
@@ -72,6 +71,7 @@ def get_eig_vec(hamk):
                      for i in range(hamk.shape[2])], dtype=complex)
 
 
+"""
 def projection_z(hamk, band=0):
     eigvecs = np.array([LA.eig(hamk[:, :, i])[1]
                         for i in range(hamk.shape[2])], dtype=complex)
@@ -103,11 +103,10 @@ def projection_y(hamk, band=0):
         eigvecs[:, :, 1] * eigvecs[:, :, 0].conj() * 1j
 
     return proj
-
+"""
 #############################################################
 # hamiltonian related functions
-
-
+"""
 def get_hamr():
 
     ndeg = np.array([])
@@ -157,6 +156,7 @@ def find_hamk(k, hamr, ndeg, rvec):
                 complex(np.cos(phase), -np.sin(phase)) / ndeg[j]
 
     return ham
+"""
 
 
 def get_toy_ham(b):
@@ -172,12 +172,12 @@ def get_toy_ham(b):
     return ham
 
 
+"""
 def get_bands_on_path(path=DEFAULT_PATH):
 
     hamr, ndeg, rvec = get_hamr()  # Read in the real-space hamiltonian
 
-    hamk = find_hamk(get_k_path(path, RESOLUTION), hamr,
-                     ndeg, rvec)  # FT the hamiltonian
+    hamk = find_hamk(get_k_path(path, RESOLUTION), hamr, ndeg, rvec)  # FT the hamiltonian
 
     hamk_pert = vary_ham(hamk)  # Adjust the fermi level
 
@@ -188,17 +188,18 @@ def get_bands_on_path(path=DEFAULT_PATH):
     energy_real = epsilon(hamk_pert)
 
     return energy_real, energy_toy
+"""
 
 
 def vary_ham(ham, ef=FERMI_ENERGY, H=0, theta=THETA_DEFAULT, phi=PHI_DEFAULT):
 
     new_ham = np.zeros_like(ham, dtype=complex)
-    new_ham[0, 0, :] = ham[0, 0, :] - ef - H*MU_B*np.cos(theta)
-    new_ham[1, 1, :] = ham[1, 1, :] - ef + H*MU_B*np.cos(theta)
+    new_ham[0, 0, :] = ham[0, 0, :] - ef - H * MU_B * np.cos(theta)
+    new_ham[1, 1, :] = ham[1, 1, :] - ef + H * MU_B * np.cos(theta)
 
-    new_ham[0, 1, :] = ham[0, 1, :] - H*MU_B * \
+    new_ham[0, 1, :] = ham[0, 1, :] - H * MU_B * \
         complex(np.cos(phi), -np.sin(phi)) * np.sin(theta)
-    new_ham[1, 0, :] = ham[1, 0, :] - H*MU_B * \
+    new_ham[1, 0, :] = ham[1, 0, :] - H * MU_B * \
         complex(np.cos(phi), np.sin(phi)) * np.sin(theta)
 
     return new_ham
@@ -244,7 +245,7 @@ def susc(ham_N, ham_P, T, for_plot=False):
 
 ##############################################################################
 # DOS functions
-
+"""
 def DOS(E, hamk, res=RESOLUTION):
 
     ham = vary_ham(hamk)
@@ -255,10 +256,11 @@ def DOS(E, hamk, res=RESOLUTION):
 
     sigma = 1e-3
 
-    deltas = (np.exp(-(E - E_k)**2 / (2 * sigma**2)) /
-              (sigma * np.sqrt(2*np.pi))).sum()
+    deltas = (np.exp(-(E - E_k)**2 /(2* sigma**2) ) / (sigma * np.sqrt(2*np.pi))).sum()
+
 
     return deltas / (RESOLUTION * RESOLUTION)
+    """
 
 
 ##############################################################################
@@ -367,7 +369,7 @@ def bracketing(ham_P, ham_N, v, ef=FERMI_ENERGY):
 
         bounds = braket(ham_P.copy(), ham_N.copy(), temp_T, v, ef=ef)
 
-        mean_H = np.mean(bounds)
+        mean_H = (bounds[0] + bounds[1]) / 2
 
         H_array.append([mean_H])
         lower_bounds.append([bounds[0]])
@@ -441,16 +443,19 @@ def fermi_level_bracketing(ham_P, ham_N, v, ef=FERMI_ENERGY, start_T_L=START_T_L
     return [current_T_L, current_T_U]
 
 
-def find_v(ef=FERMI_ENERGY, useToy=False):
+def find_v(ef=FERMI_ENERGY, useToy=True):
 
     preselected_kpoints = get_k_block(RESOLUTION, PRESELECTION_BOXSIZE)
-
+    """
     if useToy:
         hamk_P = get_toy_ham(preselected_kpoints)
     else:
         hamr, ndeg, rvec = get_hamr()  # Read in the real-space hamiltonian
-        hamk_P = find_hamk(preselected_kpoints, hamr, ndeg,
-                           rvec)  # FT the hamiltonian
+        hamk_P = find_hamk(preselected_kpoints, hamr, ndeg, rvec)  # FT the hamiltonian
+    """
+
+    # to compare against debye energy
+    hamk_P = get_toy_ham(preselected_kpoints)
 
     hamk_pert_P = vary_ham(hamk_P, ef=ef)  # Adjust the parameters
 
@@ -464,10 +469,14 @@ def find_v(ef=FERMI_ENERGY, useToy=False):
     significant_kpoints = preselected_kpoints[:,
                                               significant_kpoints_indices][:, 0, :]
 
+    """
     if useToy:
         hamk_N = get_toy_ham(-significant_kpoints)
     else:
         hamk_N = find_hamk(-significant_kpoints, hamr, ndeg, rvec)
+    """
+
+    hamk_N = get_toy_ham(-significant_kpoints)
 
     # correct +ve ham to significant k points
     hamk_P = hamk_P[:, :, significant_kpoints_indices][:, :, 0]
@@ -482,7 +491,7 @@ def find_v(ef=FERMI_ENERGY, useToy=False):
 ##############################################################################
 # For plotting
 
-def plot_phase_diagram(T, H, H_L, H_U, plot_fit=False, fit_range=2):
+def plot_phase_diagram_fitted(T, H, H_L, H_U, plot_fit=False, fit_range=2):
 
     fig, ax = plt.subplots(figsize=(5, 5), dpi=400)
 
@@ -526,7 +535,8 @@ def plot_phase_diagram(T, H, H_L, H_U, plot_fit=False, fit_range=2):
     return None
 
 
-def plot_projections(path=DEFAULT_PATH, res=RESOLUTION):
+"""
+def plot_projections(path = DEFAULT_PATH, res =RESOLUTION):
     hamr_obs = get_hamr()
     k = get_k_path(path, res)
     hamk = find_hamk(k, *hamr_obs)
@@ -556,7 +566,7 @@ def plot_projections(path=DEFAULT_PATH, res=RESOLUTION):
         for i in range(len(e_dft[0])):
 
             axs[j].scatter(xk, e_dft[:, i], c=projs[j][:, i],
-                           cmap='bwr', norm=norm, linewidths=1)
+                                     cmap='bwr', norm=norm, linewidths=1)
             axs[j].set_title(titles[j])
             # plt.plot(xk, e_t)
             # plt.hlines(0, 0, 1)
@@ -574,7 +584,6 @@ def plot_projections(path=DEFAULT_PATH, res=RESOLUTION):
     print(e_dft.min())
 
 
-"""
 def main():
 
     hamk_P, hamk_N, v = find_v()
@@ -590,14 +599,7 @@ main()
 
 time_0 = time.time()
 
-hamk_P, hamk_N, v = find_v()
-#eig_P = epsilon(hamk_P)
-#eig_N = epsilon(hamk_N)
-# print(eig_P.shape)
-#k = get_k_path(DEFAULT_PATH, RESOLUTION)
-#plt.plot(k, eig_P)
-#plt.plot(k, eig_N)
-# plt.plot(eig_P)
+hamk_P, hamk_N, v = find_v(ef=FERMI_ENERGY)  # find_v(ef=FERMI_ENERGY)
 #v = -0.8375575503135118
 print(v)
 # v = -0.8280025754528594  # N = 1000, Nfreq = 1000
@@ -635,9 +637,25 @@ for i in range(len(FERMI_ENERGY_RANGE)):
     plt.legend(loc="upper right", fontsize=8)
 """
 
+r_rashba0_1 = np.array([[6.5, 0.0],
+                       [6.071428571428571, 17.245922851562504],
+                       [5.642857142857143, 24.568914794921874],
+                       [5.214285714285714, 30.361456298828124],
+                       [4.785714285714286, 35.33084716796874],
+                       [4.357142857142858, 39.809396362304696],
+                       [3.928571428571429, 43.89466247558593],
+                       [3.5, 47.65371704101562],
+                       [3.0714285714285716, 51.06979217529296],
+                       [2.6428571428571432, 54.110876464843756],
+                       [2.2142857142857144, 56.71904449462891],
+                       [1.7857142857142856, 58.71975784301759],
+                       [1.3571428571428577, 59.93238067626954],
+                       [0.9285714285714288, 60.16789321899414],
+                       [0.5, 59.451447296142575]])
+
 
 values = bracketing(hamk_P, hamk_N, v)
-plot_phase_diagram(*values)
+plot_phase_diagram_fitted(*values)
 
 for i in range(len(values[0])):
     print("[{}, {}],".format(

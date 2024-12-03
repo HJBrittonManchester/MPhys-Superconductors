@@ -56,14 +56,15 @@ def par_field_gl_model(T, a):  # d):  # will be optimised
     # print(factor_par)
     return a * np.sqrt(1-T/Tc)
 
+
 def plot_H_angle(t, t_l, t_u, Hc2_par=0, Hc2_perp=0, plot_fit=False):
 
     fig, ax = plt.subplots(figsize=(5, 5), dpi=400)
     errors = t.copy()
-    errors[:,0] = t_u[:,0] - t_l[:,0]
-    #print(errors)
+    errors[:, 0] = t_u[:, 0] - t_l[:, 0]
+    # print(errors)
     #ax.plot(t[:, 1], t[:, 0], 'k-', label="Simulation")
-    ax.errorbar(t[:,1], t[:,0], errors[:,0], fmt='k-', label="Simulation")
+    ax.errorbar(t[:, 1], t[:, 0], errors[:, 0], fmt='k-', label="Simulation")
     ax.set_ylabel(r"$\mu_{0}$ $H_{c2}$ (T)")
     ax.set_xlabel("Polar Angle " r"$\theta$ (°) (" r"$\phi$" " = 0)")
     ax.set_xlim((89.9, 90.1))
@@ -76,8 +77,8 @@ def plot_H_angle(t, t_l, t_u, Hc2_par=0, Hc2_perp=0, plot_fit=False):
 
         ax.plot(theta, gl_angle_model(np.deg2rad(theta), Hc2_par, Hc2_perp),
                 'm--', label="Ginzburg-Landau Model")
-        #ax.plot(theta, tinkham_angle_model(np.deg2rad(theta), Hc2_par, Hc2_perp),
-         #       'c--', label="Tinkham Model")
+        # ax.plot(theta, tinkham_angle_model(np.deg2rad(theta), Hc2_par, Hc2_perp),
+        #       'c--', label="Tinkham Model")
 
     plt.legend(loc="upper left", fontsize=7)
 
@@ -87,12 +88,12 @@ def plot_H_angle(t, t_l, t_u, Hc2_par=0, Hc2_perp=0, plot_fit=False):
 def plot_phase_diagram_fitted(r, r_l, r_u, r_perp=0, plot_fit=False, fit_range=2):
 
     fig, ax = plt.subplots(figsize=(5, 5), dpi=400)
-    
-    errors = r.copy()
-    errors[:,0] = abs(r_u[:,0] - r_l[:,0])
 
-    ax.errorbar(r[:, 1], r[:, 0], errors[:,0], fmt='r-',
-            label="Phase Diagram, In-Plane H-Field ")
+    errors = r.copy()
+    errors[:, 0] = abs(r_u[:, 0] - r_l[:, 0])
+
+    ax.errorbar(r[:, 1], r[:, 0], errors[:, 0], fmt='r-',
+                label="Phase Diagram, In-Plane H-Field ")
     # ax.plot(r_perp[:, 1], r_perp[:, 0], 'b-',
     #       label="Phase Diagram, Out-of-Plane H-Field ")
 
@@ -133,3 +134,30 @@ def plot_phase_diagram_fitted(r, r_l, r_u, r_perp=0, plot_fit=False, fit_range=2
 
     return None
 
+
+"""
+par = 70
+perp = 5
+rnge = np.pi/36
+
+fig, ax = plt.subplots(figsize=(6, 5), dpi=400)
+x = np.linspace(np.pi/2 - rnge, np.pi/2 + rnge, 1000)
+gl_3d = gl_angle_model(x, par, perp)
+gl_2d = tinkham_angle_model(x, par, perp)
+
+ax.plot(x, gl_3d, 'r-', label="3D Ginzburg-Landau Model")
+ax.plot(x, gl_2d, 'b-', label="2D Tinkham Model")
+
+ax.set_xlabel("Angle " r"${\theta}$" " (°)")
+ax.set_ylabel("$\mu_{0} H_{c2} " r"(\theta)$ (T)")
+
+ax.set_xlim(np.pi/2 - rnge, np.pi/2 + rnge)
+ax.set_xticks([np.pi/2 - rnge, np.pi/2 - rnge/2, np.pi /
+              2, np.pi/2 + rnge/2, np.pi/2 + rnge])
+ax.set_xticklabels(np.rad2deg([np.pi/2 - rnge, np.pi/2 - rnge/2, np.pi /
+                               2, np.pi/2 + rnge/2, np.pi/2 + rnge]))
+ax.set_yticks([70])
+ax.set_yticklabels([r"$H_{c2}^{∥}$"])
+
+plt.legend(loc="upper left", fontsize=7)
+"""
