@@ -37,8 +37,8 @@ PHI_DEFAULT = 0
 THETA_DEFAULT = np.pi / 2
 
 # Simulation settings
-RESOLUTION = 1000
-NUM_FREQ = 1000
+RESOLUTION = 100
+NUM_FREQ = 100
 
 # k - path settings
 DEFAULT_PATH = ['K', 'G', 'K']
@@ -530,7 +530,7 @@ def plot_projections(path=DEFAULT_PATH, res=RESOLUTION):
     hamr_obs = get_hamr()
     k = get_k_path(path, res)
     hamk = find_hamk(k, *hamr_obs)
-    hamk = vary_ham(hamk, H=9, theta=0)
+    hamk = vary_ham(hamk, H=0, theta=0)
 
     p_z = np.real(projection_z(hamk))
     p_x = np.real(projection_x(hamk))
@@ -635,12 +635,12 @@ for i in range(len(FERMI_ENERGY_RANGE)):
     plt.legend(loc="upper right", fontsize=8)
 """
 
-
+"""
 values = bracketing(hamk_P, hamk_N, v)
 plot_phase_diagram(*values)
 
 for i in range(len(values[0])):
     print("[{}, {}],".format(
         values[0][i], values[1][i][0]))
-
+"""
 print("Runtime: {} s".format(time.time() - time_0))
