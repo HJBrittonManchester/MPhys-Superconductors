@@ -4,6 +4,9 @@ Created on Tue Nov 12 11:12:32 2024
 
 @author: hbrit
 """
+
+# can we run at higher resolution to check for plateau?
+
 import numpy as np
 import scipy.linalg as LA
 import matplotlib.pyplot as plt
@@ -27,9 +30,9 @@ k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
 DEBYE_ENERGY = 0.022  # 99990.022  # eV
-FERMI_ENERGY = -0.96  # eV
-START_T_L = 10
-START_T_U = 50
+FERMI_ENERGY = -0.81  # eV
+START_T_L = 100
+START_T_U = 200
 
 # Default field allignment - x direction
 PHI_DEFAULT = 0
@@ -49,63 +52,26 @@ PRESELECTION_BOXSIZE = -1  # 0.22  # set to -1 to use full area but, 0.22 works 
 # Bracket settings
 BRACKET_TOLERANCE = 1e-5
 MAX_BRACKET_STEPS = 25
-TEMP_START = 6.5
+TEMP_START = 4
 TEMP_STOP = 0.5
 TEMP_STEPS = 15
-H_U_START = 100
+H_U_START = 50
 H_L_START = .1
 
 
-fermi_levels = np.array([[-0.89, 2.5956954956054688],
-                         [-0.88, 4.06298828125],
-                         [-0.87, 4.653564453125],
-                         [-0.86, 4.81103515625],
-                         [-0.85, 4.923828125],
-                         [-0.84, 5.064453125],
-                         [-0.83, 5.21923828125],
-                         [-0.82, 5.369824218749999],
-                         [-0.81, 5.5166259765625005],
-                         [-0.8, 5.6259765625],
-                         [-0.79, 5.8251953125],
-                         [-0.78, 5.97705078125],
-                         [-0.77, 6.137939453125],
-                         [-0.76, 6.3369140625],
-                         [-0.75, 6.5],
-                         [-0.74, 6.6009765625],
-                         [-0.73, 6.7426391601562505],
-                         [-0.72, 6.886572265625],
-                         [-0.71, 7.02021484375],
-                         [-0.7, 7.1708984375],
-                         [-0.69, 7.42236328125],
-                         [-0.68, 7.579833984375],
-                         [-0.67, 7.7490234375],
-                         [-0.66, 7.9560546875],
-                         [-0.65, 7.987060546875002]])
-
-fermi_levels_dft = np.array([[-0.84, 10.6968994140625],
-                             [-0.85, 10.307025909423828],
-                             [-0.86, 9.020751953125],
-                             [-0.87, 8.8232421875],
-                             [-0.88, 8.550195312500001],
-                             [-0.89, 8.232421875],
-                             [-0.9, 7.9638671875],
-                             [-0.91, 7.7119140625],
-                             [-0.92, 7.46826171875],
-                             [-0.93, 7.08740234375],
-                             [-0.94, 6.8017578125],
-                             [-0.95, 6.771630859375],
-                             [-0.96, 6.499957275390624],
-                             [-0.97, 6.364331054687499],
-                             [-0.98, 6.15185546875],
-                             [-0.99, 5.97890625],
-                             [-1, 5.855468749999999],
-                             [-1.1, 0.07465265274047853]])
-
-fermi_levels_dft_2 = np.array([[-0.96, 6.499],
-                               [-0.95, 24.66552734375],
-                               [-0.94, 55.15625],
-                               [-0.93, 102.7587890625],
-                               [-0.92, 143.212890625], ])
+fermi_levels_dft_3 = np.array([[-0.81, 119.8699951171875],
+                               [-0.83, 107.6904296875],
+                               [-0.85, 97.529296875], 
+                               [-1.05, 5.033447265625],
+                               [-1.06, 4.8701171875],
+                               [-1.07, 4.708984375],
+                               [-1.08, 4.10589599609375],
+                               [-1.0825, 3.7685546875], 
+                               [-1.085, 3.3974609375], 
+                               [-1.0875, 2.9881591796875], 
+                               [-1.09, 2.49981689453125],
+                               [-1.0925, 1.837005615234375],
+                               [-1.095, 0.18426002502441408]])
 
 
 ################################################################
@@ -414,14 +380,16 @@ def braket(ham_P, ham_N, T, v, fermi_energy=FERMI_ENERGY, start_H_U=H_U_START, s
 
 
 def bracketing(ham_P, ham_N, v):
+    #T_smallrange = np.linspace(TEMP_START, TEMP_STOP, 10)
+    #T_largerange = np.linspace(5, 0.5, TEMP_STEPS)
+    #T_array = np.append(T_smallrange, T_largerange)
     T_array = np.linspace(TEMP_START, TEMP_STOP, TEMP_STEPS)
     H_array = []
 
     lower_bounds = []
     upper_bounds = []
 
-    for t_index in range(TEMP_STEPS):
-        temp_T = T_array[t_index]
+    for temp_T in T_array:
 
         bounds = braket(ham_P.copy(), ham_N.copy(), temp_T, v)
 
@@ -432,7 +400,7 @@ def bracketing(ham_P, ham_N, v):
         upper_bounds.append(bounds[1])
 
         print("[{}, {}], bounds: [{}, {}],".format(
-            mean_H, temp_T, bounds[0], bounds[1]))
+            temp_T, mean_H, bounds[0], bounds[1]))
 
     return T_array, np.array(H_array), np.array(lower_bounds), np.array(upper_bounds)
 
@@ -571,10 +539,10 @@ def load_v(ham_P_file=H0_P_file, ham_N_file=H0_N_file):
     ham_P = ham_P[:, :, significant_kpoints_indices][:, :, 0]
     ham_N = ham_N[:, :, significant_kpoints_indices][:, :, 0]
     ham_pert_P = vary_ham(ham_P)  # reset +ve
-    ham_pert_N = vary_ham(ham_N)
+    #ham_pert_N = vary_ham(ham_N)
 
-    v = 1/susc(ham_pert_N, ham_pert_P, 6.5)
-
+    #v = 1/susc(ham_pert_N, ham_pert_P, 6.5)
+    v = -1.1910694178100132
     # v = -0.3788176484109553 # full space
     # v = -0.6945318028905759  # ED = 0.122
 
@@ -654,7 +622,7 @@ def get_DOS(ham, energy_range=(-0.15, 1.5), energy_steps=165, save_data=False):
     return energies, density_of_state_array, carrier_density
 
 
-def main():
+#def main():
 
     #hamk_P, hamk_N, v = find_v(useToy=False)
 
@@ -687,14 +655,14 @@ def main():
     """
 
 
-def plot_phase_diagram_fitted(r, r_l, r_u, r_perp=0, plot_fit=False, fit_range=2):
+def plot_phase_diagram_fitted(T, r, r_l, r_u, r_perp=0, plot_fit=False, fit_range=2):
 
     fig, ax = plt.subplots(figsize=(5, 5), dpi=400)
 
     errors = r.copy()
     errors = abs(r_u - r_l)
 
-    ax.errorbar(r[:, 1], r[:, 0], errors, fmt='r-',
+    ax.errorbar(T, r, errors, fmt='r-',
                 label="Phase Diagram, In-Plane H-Field ")
     # ax.plot(r_perp[:, 1], r_perp[:, 0], 'b-',
     #       label="Phase Diagram, Out-of-Plane H-Field ")
@@ -755,23 +723,30 @@ r_DFT = np.array([[6.5, 0.0],
 [0.5, 54.244257354736334]])
 """
 
+
 time_0 = time.time()
+
 
 hamk_P, hamk_N, v = load_v()
 print(v)
 
-values = bracketing(hamk_P, hamk_N, v)
+T_bounds = fermi_level_bracketing(hamk_P, hamk_N, v)
+Tc = np.mean(T_bounds)
+print("[{}, {}], ".format(FERMI_ENERGY, Tc))
 
-for i in range(len(values[0])):
-    print("[{}, {}],".format(values[0][i], values[1][i]))
+#values = bracketing(hamk_P, hamk_N, v)
 
-# plot_phase_diagram_fitted(*values)
+#for i in range(len(values[0])):
+ #   print("[{}, {}],".format(values[0][i], values[1][i]))
+
+#plot_phase_diagram_fitted(*values)
+
+
+#plot()
 
 # v = -1.1911438470045455 # N = 1000, Nfreq = 1000
 # v = -1.256164818696094 # N = 300, Nf = 500
 
-#T_bounds = fermi_level_bracketing(hamk_P, hamk_N, v)
-#Tc = np.mean(T_bounds)
-#print("[{}, {}], ".format(FERMI_ENERGY, Tc))
+
 
 print("Runtime: {} s".format(time.time() - time_0))
