@@ -5,8 +5,6 @@ Created on Tue Nov 12 11:12:32 2024
 @author: hbrit
 """
 import numpy as np
-import scipy.linalg as LA
-import scipy.optimize as op
 import matplotlib.pyplot as plt
 import scipy.constants
 from matplotlib import colors
@@ -14,10 +12,13 @@ from matplotlib import colors
 
 ## our files
 from k_tools import get_k_path, get_k_block, get_k_path_spacing
+from eig_tools import epsilon, projection_z, projection_x, projection_y , get_eig_vec
+from DFT_tools import get_hamr, find_hamk, find_hamk_a
+from GF_tools import get_greens_function, matsubara_frequency, susc
 from phase_diagram import H_0, a
 
 
-ham_file = "Data/MoS2_hr.dat"
+DFT_FILE_NAME = "Data/MoS2_hr.dat"
 
 # constants
 MU_B = scipy.constants.physical_constants["Bohr magneton in eV/T"][0]
@@ -25,7 +26,7 @@ k_B = scipy.constants.physical_constants["Boltzmann constant in eV/K"][0]
 
 # system variables
 DEBYE_TEMP = 262.3 # K
-DEBYE_ENERGY = 9990.022  # eV
+DEBYE_ENERGY = 0.022  # eV
 FERMI_ENERGY = -0.96  # eV
 
 # Default field allignment - x direction
@@ -33,11 +34,11 @@ PHI_DEFAULT = 0
 THETA_DEFAULT = np.pi / 2
 
 # Simulation settings
-RESOLUTION = 100
+RESOLUTION = 50
 NUM_FREQ = 500
 
 # k - path settings
-DEFAULT_PATH = ['G', 'K', 'G']  
+DEFAULT_PATH = ['G', 'M', 'K','G']  
 
 # Full BZ settings
 PRESELECTION_BOXSIZE = -1 # 0.32  # set to -1 to use full area but, 0.22 works well
@@ -78,105 +79,9 @@ fermi_levels = np.array([[-0.85, 4.923828125],
 
 
 
-################################################################
-# eigen value operations
-
-
-def epsilon(hamk):
-    eigs = np.array([np.real_if_close(LA.eig(hamk[:, :, i])[0])
-                    for i in range(hamk.shape[2])], dtype=float)
-    return eigs
-
-
-def projection_z(hamk, band=0):
-    eigvecs = np.array([LA.eig(hamk[:, :, i])[1]
-                        for i in range(hamk.shape[2])], dtype=complex)
-    # print(eigvecs.shape)
-
-    proj = eigvecs[:, 0] * eigvecs[:, 0].conj() - \
-        eigvecs[:,  1] * eigvecs[:, 1].conj()
-
-    # print(proj[:, 0] - proj[:, 1])
-
-    return proj
-
-
-def get_eig_vec(hamk):
-    return np.array([LA.eig(hamk[:, :, i])[1]
-                     for i in range(hamk.shape[2])], dtype=complex)
-
-
-def projection_x(hamk, band=0):
-    eigvecs = np.array([LA.eig(hamk[:, :, i])[1]
-                        for i in range(hamk.shape[2])], dtype=complex)
-
-    proj = eigvecs[:, :, 0] * eigvecs[:, :, 1].conj() + \
-        eigvecs[:, :, 1] * eigvecs[:, :, 0].conj()
-
-    return proj
-
-
-def projection_y(hamk, band=0):
-    eigvecs = np.array([np.linalg.eig(hamk[:, :, i])[1]
-                        for i in range(hamk.shape[2])], dtype=complex)
-
-    proj = 1j * eigvecs[:, :, 0] * eigvecs[:, :, 1].conj() - \
-        eigvecs[:, :, 1] * eigvecs[:, :, 0].conj() * 1j
-
-    return proj
 
 #############################################################
 # hamiltonian related functions
-
-def get_hamr():
-
-    ndeg = np.array([])
-
-    with open(ham_file) as f:
-        f.readline()  # skip the metadata line
-
-        nb = int(f.readline())  # number of bands
-        nr = int(f.readline())  # number of lattice points to consider
-
-        rvec = np.zeros((3, nr), dtype=float)
-        hamr = np.zeros((2, 2, nr), dtype=np.complex128)
-
-        for step in range(7):  # should calculate this number from nr
-            ndeg = np.append(ndeg, np.array(
-                f.readline().strip().split("    "), dtype=int))
-
-        for ri in range(nr):
-            for xi in range(nb):
-                for yi in range(nb):
-                    temp_data = f.readline().strip().split()
-
-                    index_1, index_2 = int(
-                        temp_data[3]) - 1,  int(temp_data[4]) - 1
-
-                    rvec[:, ri] = np.array(temp_data[:3], dtype=float)
-                    hamr[index_1, index_2, ri] = complex(float(
-                        temp_data[5]), float(temp_data[6]))
-
-    return hamr, ndeg, rvec
-
-
-def find_hamk(k, hamr, ndeg, rvec):
-    ham = np.zeros((2, 2, k.shape[1]), dtype=np.complex128)
-    for i in range(k.shape[1]):
-        for j in range(hamr.shape[2]):
-
-            if np.linalg.norm(rvec[:, j]) > 9999:  # for debug purposes
-                continue
-
-            # Compute the phase factor
-            # Ensure the correct sign in the phase
-            phase = np.dot(k[:, i], rvec[:, j])
-
-            # Add the contribution to the Hamiltonian in k-space
-            ham[:, :, i] += hamr[:, :, j] * \
-                complex(np.cos(phase), -np.sin(phase)) / ndeg[j]
-
-    return ham
 
 
 def get_toy_ham(b):
@@ -225,42 +130,7 @@ def vary_ham(ham, ef=FERMI_ENERGY, H=0, theta=THETA_DEFAULT, phi=PHI_DEFAULT):
 
     return new_ham
 
-##############################################################################
-# Susceptibility functions
 
-def get_greens_function(ham, freq):
-    greens = np.zeros_like(ham, dtype=complex)
-    det = (1j*freq - ham[0, 0, :])*(1j*freq -
-                                    ham[1, 1, :]) - (-ham[0, 1, :]*-ham[1, 0, :])
-
-    greens[0, 0, :] = (1j*freq - ham[1, 1, :])
-    greens[1, 1, :] = (1j*freq - ham[0, 0, :])
-    greens[0, 1, :] = ham[0, 1, :]
-    greens[1, 0, :] = ham[1, 0, :]
-
-    greens = greens / det
-    return greens
-
-
-def matsubara_frequency(T, m):
-    return (2*m+1)*k_B * T * np.pi
-
-
-def susc(ham_N, ham_P, T, for_plot=False):
-    chi_0 = np.zeros(ham_N.shape[2], dtype=complex)
-
-    for m in range(-NUM_FREQ, NUM_FREQ):
-        current_freq = matsubara_frequency(T, m)
-        greens_N = get_greens_function(ham_N, -current_freq)
-        greens_P = get_greens_function(ham_P, current_freq)
-
-        chi_0 -= greens_P[0, 0, :] * greens_N[1, 1, :] - \
-            greens_P[0, 1, :]*greens_N[1, 0, :]
-
-    if for_plot:
-        return np.real_if_close(k_B * T / (RESOLUTION**2) * chi_0, 1e-4)
-
-    return np.real_if_close(k_B * T / (RESOLUTION**2) * np.sum(chi_0), 1e-4)
 
 ##############################################################################
 # DOS functions
@@ -296,7 +166,7 @@ def delta(T,  v,   hamk_P, hamk_N, fermi_energy = FERMI_ENERGY, H=0, phi=PHI_DEF
 
     hamk_pert_P = vary_ham(hamk_P, fermi_energy, H, theta=theta, phi=phi)
 
-    return 1 - v * susc(hamk_pert_N, hamk_pert_P, T)
+    return 1 - v * susc(hamk_pert_N, hamk_pert_P, T, NUM_FREQ)
 
 
 def braket(ham_P, ham_N, T, v, fermi_energy = FERMI_ENERGY, start_H_U=H_U_START, start_H_L=H_L_START,
@@ -469,7 +339,7 @@ def find_v(useToy=False):
     if useToy:
         hamk_P = get_toy_ham(preselected_kpoints)
     else:
-        hamr, ndeg, rvec = get_hamr()  # Read in the real-space hamiltonian
+        hamr, ndeg, rvec = get_hamr(DFT_FILE_NAME)  # Read in the real-space hamiltonian
         hamk_P = find_hamk(preselected_kpoints, hamr, ndeg, rvec)  # FT the hamiltonian
 
     
@@ -497,9 +367,7 @@ def find_v(useToy=False):
     hamk_pert_P = vary_ham(hamk_P)  # reset +ve
     hamk_pert_N = vary_ham(hamk_N)
 
-    v = 1/susc(hamk_pert_N, hamk_pert_P, 6.5)
-
-    return hamk_P, hamk_N, v
+    return hamk_P, hamk_N
 
 def plot_projections(path = DEFAULT_PATH, res =RESOLUTION):
     hamr_obs = get_hamr()
@@ -573,129 +441,85 @@ def get_DOS(ham, energy_range = (-0.15,1.5), energy_steps = 165, save_data=False
     
     return energies, density_of_state_array, carrier_density
 
+def velocity_path():
+    #hamk_P, hamk_N, v = find_v(useToy=False)
+    
+    hamr, ndeg, rvec = get_hamr(DFT_FILE_NAME)  # Read in the real-space hamiltonian
+
+    hamk_x = find_hamk_a(get_k_path(DEFAULT_PATH, RESOLUTION), hamr, ndeg, rvec, 0)  # FT the velocity x
+    hamk_y = find_hamk_a(get_k_path(DEFAULT_PATH, RESOLUTION), hamr, ndeg, rvec, 1)  # FT the velocity y
+
+    hamk = find_hamk(get_k_path(DEFAULT_PATH, RESOLUTION), hamr, ndeg, rvec)  # FT the hamiltonian
+
+
+    #hamk_pert = vary_ham(hamk)  # Adjust the fermi level
+
+
+    # Find the energy eigen values
+    e = epsilon(hamk)
+    
+    #find velocity eigen values
+    vx = epsilon(hamk_x)
+    vy = epsilon(hamk_y)
+    
+    fig, ax = plt.subplots(1, dpi = 200)
+    
+    ax.plot(e[:,0], '--b', label=r"$E_1(k) $")    
+    ax.plot(vy[:,0], 'b', label=r"$v_{y1}(k)$")
+    ax.plot(e[:,1], '--r', label=r"$E_2(k) $")    
+    ax.plot(vy[:,1], 'r', label=r"$v_{y2}(k)$")
+    ax.legend()
+    
+    ax.set_xticks([RESOLUTION * i for i in range(len(DEFAULT_PATH))], DEFAULT_PATH)
+    ax.set_xlim(0, (len(DEFAULT_PATH) -1) *RESOLUTION )
+    ax.hlines(0,color="k", linestyle="--", xmin=0, xmax=(len(DEFAULT_PATH) -1) *RESOLUTION)
+    
+    plt.show()    
+
 def main():
-    
-    hamk_P, hamk_N, v = find_v(useToy=False)
-    
-    
-    #print(hamk_P.shape)
-    #v= -0.357352742
-    print(v)
-    
-    Ts = fermi_level_bracketing(hamk_P, hamk_N, v, ef =  -0.93)
-    
-    print(Ts)
-    
-    # e, d, c = np.load("Data/DOS_data_300_DFT.npy").T
-
-    # #get_DOS(hamk_P,save_data=True, energy_range = (-0.15,1.25), energy_steps=100)
-    
-    # #
-    
    
-    # for v in np.linspace(-0.3, -0.53,10):
-    #     TC = BCS_critical_T(d, v)
-    #     plt.plot(e, TC,'--')
-        
-    #     print(TC[-1] - TC[0])
+    hamr, ndeg, rvec = get_hamr(DFT_FILE_NAME)  # Read in the real-space hamiltonian
+
+    hamk_x = find_hamk_a(get_k_block(RESOLUTION), hamr, ndeg, rvec, 0)  # FT the velocity x
+    hamk_y = find_hamk_a(get_k_block(RESOLUTION), hamr, ndeg, rvec, 1)  # FT the velocity y
     
+    #find velocity eigen values
+    vx = epsilon(hamk_x)
+    vy = epsilon(hamk_y)
     
-        
-    
-    # d_from_fermi = -1 / (np.log(fermi_levels[:,1] / (1.134 * DEBYE_TEMP))* 0.41)
-    
-    # #op.curve_fit(BCS_critical_T, d, fermi_levels[:,1])
+    vx = vx.reshape((RESOLUTION,RESOLUTION,2))
+    vy = vy.reshape((RESOLUTION,RESOLUTION,2))
 
     
-    # #plt.plot(fermi_levels[:,0] - FERMI_ENERGY, d_from_fermi,'xk')
-    # #plt.plot(e,d)
+    fig, ax = plt.subplots(1, dpi = 200)
     
-    # plt.xlim([-0.2,0.2])
-    # #plt.ylim([0.3,1])
-
-
-    '''
-    
-    fig, ax1 = plt.subplots()
+    col = np.zeros((RESOLUTION,RESOLUTION,3))
     
     
-    ax1.plot(e, d)
-    ax1.set_xlabel("energy / eV")
-    ax1.set_ylabel("DOS")
     
-    ax2 = ax1.twinx()
+    col[:,:,0] = vx[:,:,0]
+    col[:,:,1] = vy[:,:,1]
     
-    ax2.set_ylabel("Carrier density")
-    ax2.plot(e, c,'orange')
-    #plt.vlines(0.04,0.4,0.5,label="0.04", colors='red')
-    #plt.vlines(-0.15,0.0,0.1,label="-0.15", colors='purple')
-    #plt.vlines(0.12,0.45,.6,label="0.12", colors='green')
-    #plt.legend()
+    #max_velocity = col.max()
+    #min_velocity = col.min()
     
-        '''
-    '''
+    #col = (col - min_velocity) / (max_velocity - min_velocity)
     
-    inp = input("Next sigma = ")
-    while inp != 'q':
-        
-        en = float(inp)
-        
-        dos = DOS(en, hamk_P,sigma = 1e-3)
-        
-        print(dos)
-        
-        T_c = BCS_critical_T(dos, v)
-        
-        print(T_c)
-        
-        if dos < 1e-3:
-            inp = input("Next sigma = ")
-            continue
-        
-        sigmas.append(float(inp))
-        Ts.append(T_c)
-        doss.append(dos)
-        energies.append(en)
-        
-        sig_to_plot = -np.log10(np.array(sigmas))
-        
-        energies_to_plot = np.array(energies)
-        doss_to_plot = (np.array(doss))[energies_to_plot.argsort()]
-        energies_to_plot = energies_to_plot[energies_to_plot.argsort()]
-        
-        
-        Ts_to_plot = (np.array(Ts))[sig_to_plot.argsort()]
-        sig_to_plot = sig_to_plot[sig_to_plot.argsort()]
-        
-        plt.plot(energies_to_plot, doss_to_plot)
-        plt.show()
-        
-        inp = input("Next sigma = ")
-    '''
+    #print(max_velocity)
+    #(min_velocity)
+    
+    image = ax.imshow(col[:,:,0], cmap="magma")
+    
+    
+    fig.colorbar(image)
+    
+    path_points = np.array([[0,0,1/3],[0,1/2,1/3]]) * RESOLUTION
+    ax.scatter(path_points[0],path_points[1],color="white",marker="x")
+    
+    
+    
     
 
-main()
+if __name__ == "__main__":
+    main()
 
-
-'''
-es = get_bands_on_path(DEFAULT_PATH)[0]
-
-plt.hlines(0.04,0.15,.35,label="0.04", colors='red')
-plt.hlines(-0.15,0.4,0.6,label="-0.15", colors='purple')
-plt.hlines(0.12,0.15,.35,label="0.12", colors='green')
-plt.hlines(0.12,0.65,.85, colors='green')
-plt.hlines(0.04,0.65,.85, colors='red')
-
-
-
-
-x = np.linspace(0,1,len(es[:,0]))
-
-plt.plot(x,es)
-
-plt.ylabel("Energy / eV")
-
-plt.xticks([0,0.5,1],labels=[r"$\Gamma$", "K", r"$\Gamma$"])
-plt.title("DFT energy dispersion with turning points marked")
-plt.legend(loc="upper right")
-'''

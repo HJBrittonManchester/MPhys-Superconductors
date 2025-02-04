@@ -8,10 +8,10 @@ Created on Thu Jan 30 14:22:09 2025
 import numpy as np
 import scipy.linalg as LA
 
-def epsilon(hamk):
-    eigs = np.array([np.real_if_close(LA.eig(hamk[:, :, i])[0])
+def epsilon(hamk, tol = 1e-10):
+    eigs = np.array([np.real_if_close(LA.eig(hamk[:, :, i])[0], tol)
                     for i in range(hamk.shape[2])], dtype=float)
-    return eigs
+    return np.real_if_close(eigs, tol)
 
 
 def get_eig_vec(hamk):

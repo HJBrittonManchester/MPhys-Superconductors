@@ -59,5 +59,22 @@ def find_hamk(k, hamr, ndeg, rvec):
 
 def find_hamk_a(k,hamr, ndeg, rvec, a):
     
+    ham = np.zeros((2, 2, k.shape[1]), dtype=np.complex128)
+    for i in range(k.shape[1]):
+        for j in range(hamr.shape[2]):
+
+            if np.linalg.norm(rvec[:, j]) > 9999:  # for debug purposes
+                continue
+
+            # Compute the phase factor
+            # Ensure the correct sign in the phase
+            phase = np.dot(k[:, i], rvec[:, j])
+
+            # Add the contribution to the Hamiltonian in k-space
+            ham[:, :, i] += -1j *rvec[a, j] * hamr[:, :, j] * \
+                complex(np.cos(phase), -np.sin(phase)) / ndeg[j]
+
+    return ham
+    
     
     

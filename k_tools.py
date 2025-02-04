@@ -12,7 +12,7 @@ import numpy as np
 # get_k_XXXX methods
 
 
-def get_k_block(res, size_of_box):
+def get_k_block(res, size_of_box = -1):
 
     if size_of_box == -1:  # use full space
 
