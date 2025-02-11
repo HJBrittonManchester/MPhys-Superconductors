@@ -33,11 +33,11 @@ def matsubara_frequency(T, m):
     return (2*m+1)*k_B * T * np.pi
 
 
-    
+
 
 def susc(ham_N, ham_P, T, n_freq):
     '''
-    
+
     Parameters
     ----------
     ham_N : TYPE
@@ -66,3 +66,29 @@ def susc(ham_N, ham_P, T, n_freq):
             greens_P[0, 1, :]*greens_N[1, 0, :]
 
     return np.real_if_close(k_B * T * chi_0, 1e-4)
+
+
+def Kubo_susceptibility_unnorm(ham, v_x, v_y, T, n_freq, PLOT=False):
+
+    gf = get_greens_function(ham, matsubara_frequency(T, 0))
+
+
+    mat_mul = np.einsum("ab..., bc..., cd..., de..., ef..., fg..., gh..., ha... -> ...", gf, v_x, gf, v_y, gf, v_x, gf, v_y)
+
+    for m in range(1,n_freq):
+
+        gf = get_greens_function(ham, matsubara_frequency(T, m))
+
+        mat_mul += np.einsum("ab..., bc..., cd..., de..., ef..., fg..., gh..., ha... -> ...", gf,v_x, gf, v_y,gf,v_x, gf, v_y)
+
+        gf = get_greens_function(ham, matsubara_frequency(T, -m))
+
+        mat_mul += np.einsum("ab..., bc..., cd..., de..., ef..., fg..., gh..., ha... -> ...", gf,v_x, gf, v_y,gf,v_x, gf, v_y)
+
+    if PLOT:
+        return T * mat_mul
+
+    return  T * mat_mul.sum()
+
+
+

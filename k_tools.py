@@ -12,6 +12,19 @@ import numpy as np
 # get_k_XXXX methods
 
 
+def get_better_k_square(region_res, centre =(1/2,1/2), scale=1):
+    full_BZ_res = int(region_res / scale**2)
+
+    k = np.zeros((3, region_res*region_res))
+
+    for xi in range(region_res):
+        for yi in range(region_res):
+            k[0, xi + region_res * yi] = 2 * np.pi * ((xi / (region_res) - 1/2) * scale + centre[0])
+            k[1, xi + region_res * yi] = 2 * np.pi * ((yi / (region_res) - 1/2) * scale + centre[1])
+    return k, full_BZ_res
+
+
+
 def get_k_block(res, size_of_box = -1):
 
     if size_of_box == -1:  # use full space
