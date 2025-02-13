@@ -10,18 +10,20 @@ import matplotlib.pyplot as plt
 from matplotlib import colors
 from scipy.optimize import curve_fit
 
-from DFT_hamiltonian import vary_ham
+from Main import vary_ham
 from DFT_tools import get_hamr, find_hamk
+from GF_tools import Kubo_susceptibility_unnorm
 from eig_tools import epsilon
-from k_tools import get_k_path, get_k_path_spacing, get_k_block
+from k_tools import get_k_path, get_k_path_spacing, get_k_block, get_better_k_square
 from eig_tools import projection_x, projection_y, projection_z
 
-DFT_FILES = ["Data/MoS2_hr.dat",
-             "Data/DFT_H0_300_P.npy", "Data/DFT_H0_300_N.npy"]
+DFT_FILES = ["Data/MoS2_hr.dat", "Data/DFT_H0_300_P.npy",
+             "Data/DFT_H0_300_N.npy", "Data/hamk_1000.npy"]
+VEL_FILES = ["Data/velocity_x_1000.npy", "Data/velocity_y_1000.npy"]
 DOS_FILE = "Data/DOS_data_300_DFT.npy"
 TC_FILE = "Data/TC_DFT_1000_FINAL.npy"
 
-RESOLUTION = 300
+RESOLUTION = 1000
 DEFAULT_PATH = ['G', 'M', 'K', 'G']
 
 
@@ -51,29 +53,82 @@ def plot_bands_on_path(path=DEFAULT_PATH, ef=-0.96, H=0., theta=np.pi/2, phi=0.)
     return None
 
 
+def plot_susceptibility(ef=-0.96, H=0., theta=np.pi/2, phi=0., variable_field=False):
+    ham = np.load(DFT_FILES[3])
+    vel_x = np.load(VEL_FILES[0])
+    vel_y = np.load(VEL_FILES[1])
+
+    k_points, res = get_better_k_square(region_res=1000)
+    cut_indices = np.where(
+        np.sqrt((k_points[0]-2*np.pi/3)**2 + (k_points[1]-2*np.pi/3)**2) < 0.6)[0]
+    # print(len(cut_indices))
+
+    vel_x_cut = vel_x[:, :, cut_indices]
+    vel_y_cut = vel_y[:, :, cut_indices]
+
+    fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
+
+    if variable_field:
+
+        n = 25
+
+        susc_array = np.zeros(n)
+        H_array = np.linspace(0., 150, n)
+
+        for i in range(n):
+
+            ham_pert = vary_ham(ham, ef=ef, H=H_array[i], theta=theta, phi=phi)
+            ham_pert_cut = ham_pert[:, :, cut_indices]
+
+            susc_array[i] = Kubo_susceptibility_unnorm(
+                ham_pert_cut, vel_x_cut, vel_y_cut, 6.3, 20, PLOT=False)
+            print("{}".format(i))
+
+        ax.plot(H_array, susc_array, marker='x', markersize=5)
+
+        for j in range(n):
+            print("[[{}, {}],]".format(H_array[j], susc_array[j]))
+
+        return None
+
+    ham_pert = vary_ham(ham, ef=ef, H=H, theta=theta, phi=phi)
+    ham_pert_cut = ham_pert[:, :, cut_indices]
+
+    susc_array = Kubo_susceptibility_unnorm(
+        ham_pert_cut, vel_x_cut, vel_y_cut, 6.3, 20, PLOT=True)
+
+    k_points_cut = k_points[:, cut_indices]
+    cax = ax.scatter(k_points_cut[0], k_points_cut[1],
+                     c=np.real(susc_array), cmap='bwr', norm=colors.CenteredNorm(0))
+    fig.colorbar(cax, ax=ax)
+
+    return None
+
+
 def plot_energy_spectrum(cutoff=0.022, ef=-0.96, H=0., theta=np.pi/2, phi=0., plot_selected=False):
-    ham_P = np.load(DFT_FILES[1])
-    ham_N = np.load(DFT_FILES[2])
+    #ham_P = np.load(DFT_FILES[1])
+    #ham_N = np.load(DFT_FILES[2])
+
+    ham = np.load(DFT_FILES[3])
 
     k_points = get_k_block(RESOLUTION, size_of_box=-1)
 
-    ham_pert_P = vary_ham(ham_P, ef=ef, H=H, theta=theta, phi=phi)
-    energy = epsilon(ham_pert_P).mean(axis=1).reshape(RESOLUTION, RESOLUTION)
+    ham_pert = vary_ham(ham, ef=ef, H=H, theta=theta, phi=phi)
+    energy = epsilon(ham_pert).mean(axis=1).reshape(RESOLUTION, RESOLUTION)
 
-    fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
+    fig, ax = plt.subplots(figsize=(7, 6), dpi=400)
 
     alpha = beta = np.linspace(0, 1, RESOLUTION)
     alpha, beta = np.meshgrid(alpha, beta)
 
-    cax = ax.pcolor(alpha, beta, energy)
+    fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
+
+    cax = ax.pcolor(alpha, beta, np.real(energy))
     fig.colorbar(cax, label="Energy (eV)")
 
     sig_points = np.array([[0, 0, 1/3, 2/3], [0, 1/2, 1/3, 2/3],
-                          [r"$\Gamma$", "$M$", "$K$", "$K'$"]])
+                           [r"$\Gamma$", "$M$", "$K$", "$K'$"]])
 
-    print(sig_points.shape)
-
-    #ax.plot(sig_points[0, :], sig_points[1, :], 'ko', markersize=6)
     for i in range(4):
         ax.plot(float(sig_points[0, i]), float(
             sig_points[1, i]), 'ko', markersize=6)
@@ -87,7 +142,7 @@ def plot_energy_spectrum(cutoff=0.022, ef=-0.96, H=0., theta=np.pi/2, phi=0., pl
         significant_kpoints = k_points[:, significant_kpoints_indices][:, 0, :]
 
         ax.contourf(alpha, beta, energy, levels=[
-                    -cutoff, cutoff], colors="r", label="Valid K Points")
+            -cutoff, cutoff], colors="r", label="Valid K Points")
 
         plt.legend(loc="upper left")
 
