@@ -13,13 +13,13 @@ import time
 
 
 ## our files
-from k_tools import get_k_path, get_k_block, get_k_path_spacing, get_better_k_square
-from eig_tools import epsilon, projection_z, projection_x, projection_y , get_eig_vec
+from k_tools import get_k_path, get_k_block, get_k_path_spacing, get_better_k_square, get_close_k_points
+from eig_tools import diagonalise, projection_z, projection_x, projection_y , get_eig_vec
 from DFT_tools import get_hamr, find_hamk, find_hamk_a, find_Berry_connection, find_pos_operator
 from GF_tools import get_greens_function, matsubara_frequency, susc, Kubo_susceptibility_unnorm
 from phase_diagram import H_0, a
 
-from braket import range_of_brakets
+from bracket import range_of_brackets
 
 
 DFT_HAM_FILE_NAME = r"Data/MoS2_hr.dat"
@@ -39,8 +39,8 @@ PHI_DEFAULT = 0
 THETA_DEFAULT = np.pi / 2
 
 # Simulation settings
-RESOLUTION = 40
-NUM_FREQ = 100
+RESOLUTION = 1000
+NUM_FREQ = 40
 
 # k - path settings
 DEFAULT_PATH = ['G', 'M', 'K','G']
@@ -57,6 +57,33 @@ TEMP_STOP = .5
 TEMP_STEPS = 20
 H_U_START = 100
 H_L_START = -1
+
+
+#############
+# profiler class
+class profiler():
+
+    def __init__(self):
+        self.times = [time.time()]
+        self.labels = ["start"]
+
+    def Next(self, new_label):
+        self.times.append(time.time())
+        self.labels.append(new_label)
+
+        time_step = self.times[-1] - self.times[-2]
+        print("{} took: {:.5g}s".format(self.labels[-1], time_step))
+
+    def Summary(self):
+
+        print("-"*25)
+        print("|\tProfilling Summary\t|")
+        print("-"*25)
+        for i in range(1, len(self.times)):
+            time_step = self.times[i] - self.times[i-1]
+
+            print("{} took: {:.5g}s".format(self.labels[i], time_step))
+
 
 
 
@@ -88,8 +115,8 @@ def get_bands_on_path(path=DEFAULT_PATH):
     hamk_pert_toy = get_toy_ham(get_k_path(path, RESOLUTION))
 
     # Find the energy eigen values
-    energy_toy = epsilon(hamk_pert_toy)
-    energy_real = epsilon(hamk_pert)
+    energy_toy = diagonalise(hamk_pert_toy)[0]
+    energy_real = diagonalise(hamk_pert)[0]
 
     return energy_real, energy_toy
 
@@ -119,7 +146,7 @@ def DOS(E, hamk, res=RESOLUTION, sigma = 1e-2):
 
     ham = vary_ham(hamk)
 
-    E_k = epsilon(ham).flatten()
+    E_k = diagonalise(ham)[0].flatten()
 
 
     deltas = (np.exp(-(E - E_k)**2 /(2* sigma**2) ) / (sigma * np.sqrt(2*np.pi))).sum()
@@ -149,13 +176,17 @@ def delta(T,  v,   hamk_P, hamk_N, fermi_energy = FERMI_ENERGY, H=0, phi=PHI_DEF
     return 1 - v * np.real_if_close(susc(hamk_pert_N, hamk_pert_P, T, NUM_FREQ).sum() / RESOLUTION**2,)
 
 
-def delta_kubo(T,  v,   ham, v_x, v_y, fermi_energy = FERMI_ENERGY, H=0, phi=PHI_DEFAULT, theta=THETA_DEFAULT):
-
+def delta_kubo(T,  v,   ham, h_x, h_y, fermi_energy = FERMI_ENERGY, H=0, phi=PHI_DEFAULT, theta=THETA_DEFAULT):
 
 
     ham_pert = vary_ham(ham, fermi_energy, H, theta=theta, phi=phi)
 
-    return 1- v* Kubo_susceptibility_unnorm(ham_pert, v_x, v_y, T, NUM_FREQ) / RESOLUTION**2
+    #U = get_eig_vec(ham_pert)
+
+    v_x = h_x #np.einsum("jim , jkm, klm -> ilm", U.conj(), h_x, U)
+    v_y = h_y #np.einsum("jim , jkm, klm -> ilm", U.conj(), h_y, U)
+
+    return 1- v*Kubo_susceptibility_unnorm(ham_pert, v_x, v_y, T, NUM_FREQ).real / RESOLUTION**2
 
 
 
@@ -176,7 +207,7 @@ def find_v(useToy=False):
     hamk_pert_P = vary_ham(hamk_P)  # Adjust the fermi level
 
     # Find the mean of energy eigen values
-    energy = epsilon(hamk_pert_P).mean(axis=1)
+    energy = diagonalise(hamk_pert_P)[0].mean(axis=1)
 
     # Find the points within the Debye energy of fermi surface
     significant_kpoints_indices = np.where(abs(energy) < DEBYE_ENERGY)
@@ -223,7 +254,7 @@ def plot_projections(path = DEFAULT_PATH, res =RESOLUTION):
     print((p_z).mean(axis=0))
 
     # e_dft, e_t = get_bands_on_path()
-    e_dft = epsilon(hamk)
+    e_dft = diagonalise(hamk)[0]
 
     xk = get_k_path_spacing(k)
 
@@ -290,16 +321,12 @@ def velocity_path():
 
     hamk = find_hamk(get_k_path(DEFAULT_PATH, RESOLUTION), hamr, ndeg, rvec)  # FT the hamiltonian
 
-
-    #hamk_pert = vary_ham(hamk)  # Adjust the fermi level
-
-
     # Find the energy eigen values
-    e = epsilon(hamk)
+    e = diagonalise(hamk)[0]
 
     #find velocity eigen values
-    vx = epsilon(hamk_x)
-    vy = epsilon(hamk_y)
+    vx = diagonalise(hamk_x)[0]
+    vy = diagonalise(hamk_y)[0]
 
     fig, ax = plt.subplots(1, dpi = 200)
 
@@ -317,111 +344,111 @@ def velocity_path():
 
 
 def calculate_full_bz_variables(resolution=RESOLUTION, save=True):
+
     hamr, ndeg, rvec, nb, nr = get_hamr(DFT_HAM_FILE_NAME)  # Read in the real-space hamiltonian
+    r = find_pos_operator(DFT_POS_FILE_NAME, nb, nr)
 
-    k, full_res = get_better_k_square(resolution, centre=(1/3,1/3), scale=0.2)
-
-
+    k = get_close_k_points(RESOLUTION,thresholds=(.68, .8))
+    print(k.shape)
+    k = np.hstack((k, get_close_k_points(RESOLUTION,thresholds=(.68, .8),centre=(2/3,2/3))))
+    print(k.shape)
+    #get_better_k_square(resolution, centre=(1/3,1/3), scale=0.2)
     hamk = find_hamk(k, hamr, ndeg, rvec)  # FT the hamiltonian
+    hamk_pert = vary_ham(hamk, H =0) # adjust fermi level and DEBUG: adjust H field
 
-    #r = find_pos_operator(DFT_POS_FILE_NAME, nb, nr)
+    # get eigenvalues E and unitary U rotations in shapes (nb,nk), and (nb,nb,nk)
+    E, U = diagonalise(hamk_pert)
 
-    hamk = vary_ham(hamk, H =0)
-
-
-    # # get unitary rotations in shape (nb,nb,nk)
-    # U = np.transpose(get_eig_vec(hamk), (1,2,0))
-    # U_dagger = np.conj(np.transpose(np.array([np.linalg.inv(U[:,:,i]) for i in range(U.shape[2])]),(1,2,0)))
-
-    # # get eigenvalues
-    # E = epsilon(hamk)
-    # print(E.max())
-
-
-
-    # # get Berry Connection for x and y
-    # b_con_x = find_Berry_connection(k, r, ndeg, rvec, 0)
-    # b_con_y = find_Berry_connection(k, r, ndeg, rvec, 1)
-
-    # # testing berry connection
-
-    # #beig = np.real(epsilon(1j * b_con_x)[:,0].reshape(resolution,resolution))
-
-    # #bplot = plt.imshow(beig)
-    # #plt.colorbar(bplot)
-
-
+    # get Berry Connection for x and y
+    b_con_x = find_Berry_connection(k, r, ndeg, rvec, 0)
+    b_con_y = find_Berry_connection(k, r, ndeg, rvec, 1)
 
     # get dH/dk_a
     h_x = find_hamk_a(k, hamr, ndeg, rvec, 0)  # FT the ix . H
     h_y = find_hamk_a(k, hamr, ndeg, rvec, 1)  # FT the iy . H
 
 
+    ## transform all variables into BAR - (H) basis
+
+    h_x_bar = np.einsum("jim , jkm, klm -> ilm", U.conj(), h_x, U)
+    h_y_bar = np.einsum("jim , jkm, klm -> ilm", U.conj(), h_y, U)
+    b_con_x_bar = np.einsum("jim , jkm, klm -> ilm", U.conj(), b_con_x, U)
+    b_con_y_bar = np.einsum("jim , jkm, klm -> ilm", U.conj(), b_con_y, U)
+
+    E_H_x = np.zeros_like(U)
+    E_H_x[0,1,:] = np.real_if_close(E[0] - E[1]) * b_con_x_bar[0,1]
+    E_H_x[1,0,:] = np.real_if_close(E[1] - E[0]) * b_con_x_bar[1,0]
+
+    E_H_y = np.zeros_like(U)
+    E_H_y[0,1,:] = np.real_if_close(E[ 0] - E[ 1]) * b_con_y_bar[0,1]
+    E_H_y[1,0,:] = np.real_if_close(E[1] - E[0]) * b_con_y_bar[1,0]
 
 
-
-    # ## transform all variables into BAR - (H) basis
-
-    # h_x_bar = np.einsum("ij... , jk..., kl... -> il...", U_dagger, h_x, U)
-    # h_y_bar = np.einsum("ij... , jk..., kl... -> il...", U_dagger, h_y, U)
-    # b_con_x_bar = np.einsum("ij... , jk..., kl... -> il...", U_dagger, b_con_x, U)
-    # b_con_y_bar = np.einsum("ij... , jk..., kl... -> il...", U_dagger, b_con_y, U)
-
-    # E_H_x = np.zeros((2,2,E.shape[0]),dtype=np.complex128)
-    # E_H_x[0,1,:] = np.real_if_close(E[:, 0] - E[:, 1]) * b_con_x_bar[0,1]
-    # E_H_x[1,0,:] = np.real_if_close(E[:,1] - E[:,0]) * b_con_x_bar[1,0]
-
-    # E_H_y = np.zeros((2,2,E.shape[0]), dtype=np.complex128)
-    # E_H_y[0,1,:] = np.real_if_close(E[:, 0] - E[:, 1]) * b_con_y_bar[0,1]
-    # E_H_y[1,0,:] = np.real_if_close(E[:,1] - E[:,0]) * b_con_y_bar[1,0]
-
-
-    # v_x =   h_x_bar - 1j * E_H_x
-    # v_y =   h_y_bar - 1j * E_H_y
+    v_x =   h_x_bar - 1j * E_H_x
+    v_y =   h_y_bar - 1j * E_H_y
+    
+    
+    # get Hamiltonian gauge hamiltonian (Diagonal)
+    ham_H = np.zeros_like(U)
+    ham_H[0,0,:] = E[0]
+    ham_H[1,1,:] = E[1]
 
     # print(b_con_x.sum())
 
-    # h =  v_x.reshape(2,2,resolution,resolution)
-    # fig, axs = plt.subplots(2,2)
+    #chi = Kubo_susceptibility_unnorm(hamk, v_x, v_y, 6.5, NUM_FREQ,PLOT=True) / (resolution**2)
 
-    # norm = colors.CenteredNorm(0)
+    #h =  chi.reshape(2,2,resolution,resolution)
+    #h = chi # .reshape(resolution,resolution)
+    fig, axs = plt.subplots(2,2)
 
-    # for i in [0,1]:
-    #     for j in [0,1]:
-    #         c = axs[i,j].pcolor(h[i,j].real, cmap="bwr", norm=norm )
-    #         fig.colorbar(c,ax=axs[i,j])
+    norm = colors.CenteredNorm(0)
+
+    #test_k = get_close_k_points(RESOLUTION * 5,thresholds=(.92,1.05))
+
+    for i in [0,1]:
+        for j in [0,1]:
+            c = axs[i,j].scatter(k[0],k[1], c=E[i].real, cmap="bwr", norm=norm)
+            axs[i,j].set_xlim((1.4 + 2 * i * np.pi /3,2.7+ 2 * i * np.pi /3))
+            axs[i,j].set_ylim((1.4+ 2 * i * np.pi /3,2.7+ 2 * i * np.pi /3))
+            axs[i,j].set_facecolor("black")
+            #axs[i,j].pcolor(k[0].reshape(resolution,resolution), k[1].reshape(resolution,resolution), h.real, cmap="bwr", norm=norm )
+            #axs[i,j].contourf(k[0].reshape(resolution,resolution), k[1].reshape(resolution,resolution), np.real(E[i]).reshape(resolution,resolution), [ - DEBYE_ENERGY, DEBYE_ENERGY], alpha=0.2)
+            #axs[i,j].scatter(test_k[0],test_k[1], alpha=.2,color='k')
+            fig.colorbar(c,ax=axs[i,j])
 
 
-    # if save:
-    #     np.save("Data/velocity_x_{}".format(resolution),v_x )
-    #     np.save("Data/velocity_y_{}".format(resolution),v_y )
-    #     np.save("Data/hamk_{}".format(resolution),hamk )
+    if save:
+        np.save("Data/vx_2k_{}".format(resolution),v_x )
+        np.save("Data/vy_2k_{}".format(resolution),v_y )
+        np.save("Data/ham_h_2k_{}".format(resolution),ham_H )
     return hamk, h_x, h_y
 
 def find_sig_points():
-    k, full_res = get_better_k_square(RESOLUTION,scale= 1)
+    #k, full_res = get_better_k_square(RESOLUTION,scale= 1)
 
-    hamk = np.load("Data/hamk_{}.npy".format(RESOLUTION))
-    v_x = np.load("Data/velocity_x_{}.npy".format(RESOLUTION))
-    v_y = np.load("Data/velocity_y_{}.npy".format(RESOLUTION))
+    hamk = np.load("Data/ham_h_2k_4000.npy".format(RESOLUTION))
+    v_x = np.load("Data/vx_2k_4000.npy".format(RESOLUTION))
+    v_y = np.load("Data/vy_2k_4000.npy".format(RESOLUTION))
     print(hamk.shape)
 
-    # e = epsilon(hamk)
+    # e = diagonalise(hamk)[0]
 
     # #
     # T = 6.5
 
     pert_hamk = vary_ham(hamk, H = 0)
 
-    e = epsilon(pert_hamk)
+    e = diagonalise(pert_hamk)[0]
 
 
 
-    significant_kpoints_indices = np.where(abs(e[:,0]) < DEBYE_ENERGY)
+    significant_kpoints_indices = np.where(abs(e[0]) < DEBYE_ENERGY)
+
+    print(significant_kpoints_indices)
 
     # #print(significant_kpoints_indices)
 
-    sig_k = k[:,significant_kpoints_indices][:,0]
+    #sig_k = k[:,significant_kpoints_indices][:,0]
 
     sig_ham = hamk[:,:,significant_kpoints_indices][:,:,0]
 
@@ -432,14 +459,82 @@ def find_sig_points():
     print(sig_ham.shape)
 
 
-    np.save("temp/velocity_x_{}".format(sig_ham.shape[-1]),sig_v_x )
-    np.save("temp/velocity_y_{}".format(sig_ham.shape[-1]),sig_v_y )
+    np.save("temp/h_x_{}".format(sig_ham.shape[-1]),sig_v_x )
+    np.save("temp/h_y_{}".format(sig_ham.shape[-1]),sig_v_y )
     np.save("temp/hamk_{}".format(sig_ham.shape[-1]),sig_ham )
 
 
 def main():
 
-    ham, h_x, h_y = calculate_full_bz_variables(RESOLUTION,False)
+    prof = profiler()
+    ham, h_x, h_y = calculate_full_bz_variables(RESOLUTION,True)
+    prof.Next("Saved Files")
+
+    # ham = np.load("Temp/hamk_156196.npy")
+    # h_x = np.load("Temp/h_x_156196.npy")
+    # h_y = np.load("Temp/h_y_156196.npy")
+
+    # prof.Next("Loading files")
+
+
+    # U = get_eig_vec(ham)
+
+    # ham = np.einsum("jim , jkm, klm -> ilm", U.conj(), ham, U)
+
+    # v_x = np.einsum("jim , jkm, klm -> ilm", U.conj(), h_x, U)
+    # v_y = np.einsum("jim , jkm, klm -> ilm", U.conj(), h_y, U)
+
+    # pert_hamk = vary_ham(ham, H=0)
+
+
+
+
+
+    # chi = Kubo_susceptibility_unnorm(pert_hamk, v_x, v_y, 6.5, NUM_FREQ) / (RESOLUTION**2)
+    # v =  1/np.real(chi)
+    # print(v)
+    # print(1- v * np.real(chi))
+
+    # prof.Next("Finding V")
+
+
+    # #func = lambda H,T: delta_kubo(T, v, ham, h_x, h_y, H=H)
+    # #x,y = range_of_brackets(func, 5, 6.5, 0, 20, 4)
+
+    # x_range = np.linspace(6.45,6.495, 3)
+
+
+    # y_range = np.linspace(10, 15, 2)
+
+    # X, Y = np.meshgrid(x_range, y_range)
+
+    # Y += np.sqrt(1-X/ 6.5) * 50
+
+    # X = X.flatten()
+    # Y = Y.flatten()
+
+    # d = np.zeros_like(X)
+
+    # for i in range(len(X)):
+    #     d[i] = delta_kubo(X[i], v, ham, h_x, h_y, H=Y[i])
+    #     print(i)
+
+
+
+    # print(X)
+    # print()
+    # print(Y)
+    # print()
+    # print(d)
+
+    # prof.Next("bracketing")
+
+    # fig, ax = plt.subplots()
+
+    # c = ax.scatter(X,Y,c=d, cmap="bwr",     norm = colors.CenteredNorm(0))
+    # ax.set_facecolor("black")
+    # fig.colorbar(c, ax=ax)
+
 
     #sig_v_x = np.load("temp/velocity_x_9791.npy", )
     #sig_v_y = np.load("temp/velocity_y_9791.npy")
@@ -457,57 +552,10 @@ def main():
     #print(v)
 
 
-    pert_hamk = vary_ham(ham, H=20)
-
-    U = np.transpose(get_eig_vec(pert_hamk), (1,2,0))
-    U_dagger = np.conj(np.transpose(np.array([np.linalg.inv(U[:,:,i]) for i in range(U.shape[2])]),(1,2,0)))
-
-
-    v_x = np.einsum("ij... , jk..., kl... -> il...", U_dagger, h_x, U)
-    v_y = np.einsum("ij... , jk..., kl... -> il...", U_dagger, h_y, U)
 
 
 
-    chi = Kubo_susceptibility_unnorm(pert_hamk, v_x, v_y, 6.5, NUM_FREQ) / (RESOLUTION**2)
 
-    print(1/np.real(chi))
-
-    v =  0.00026747410622667516
-
-    print(1- v * np.real(chi))
-
-    #print(delta_kubo(6.5,  v,   sig_ham, sig_v_x, sig_v_y, fermi_energy = FERMI_ENERGY, H=0, phi=PHI_DEFAULT, theta=THETA_DEFAULT))
-
-    #print(delta_kubo(6.5,  v,   sig_ham, sig_v_x, sig_v_y, fermi_energy = FERMI_ENERGY, H=1, phi=PHI_DEFAULT, theta=THETA_DEFAULT))
-
-    #print(delta_kubo(6.5,  v,   sig_ham, sig_v_x, sig_v_y, fermi_energy = FERMI_ENERGY, H=-1, phi=PHI_DEFAULT, theta=THETA_DEFAULT))
-
-
-    # func = lambda T, H : delta(T, v, ham_P, ham_N, H=H)
-    # #delta_kubo(T,  v,   sig_ham, sig_v_x, sig_v_y, fermi_energy = FERMI_ENERGY, H=H, phi=PHI_DEFAULT, theta=THETA_DEFAULT)
-
-
-    # #x,y = range_of_brakets(func, H_L_START, H_U_START, TEMP_START, TEMP_STOP, TEMP_STEPS)
-
-    # xarr = [5 * i + -3 for i in range(20) ]
-    # y= [0.9102434763085673, 0.9101086971648001, 0.9112802694136843, 0.9134866491550673, 0.9163222674781425, 0.9194389217013231, 0.9226242254206982, 0.9257812649320653, 0.9288774346511999, 0.9319035689195384, 0.9348531554098228, 0.9377178570064929, 0.9404899870787699, 0.9431614416958571, 0.9457180413959103, 0.9481394728166659, 0.9504092640486558, 0.9525245673315946, 0.9544958693722897, 0.9563401059086211]
-    # #[-0.015346487069633374, -0.007174325007704763, -0.05284767816289149, -0.0071896377297566705, 0.2095983368077149, 0.48820276386041805, 0.6574873233050669, 0.6316061797041685, 0.41101213850665197, 0.06205731482121779, -0.28958721472443094, -0.5313097446485362, -0.6003072915552432, -0.44315664227379425, -0.04785096456174753, 0.4227633408196909, 0.696907963677628, 0.6787826874280887, 0.5063152205131237, 0.3942344204805238]
-
-    # #for x in xarr:
-    # #    y.append(func(6.5,x))
-
-    # plt.plot(xarr,y)
-    # print(y)
-
-    # test_x = 20
-    # test_y = func(6.5, test_x)
-    # plt.scatter(test_x, test_y)
-    # #find velocity eigen values
-    # vx = epsilon(v_x)
-    # vy = epsilon(v_y)
-
-    # vx = vx.reshape((RESOLUTION,RESOLUTION,2))
-    # vy = vy.reshape((RESOLUTION,RESOLUTION,2))
 
     # # start plotting
     # fig, axs = plt.subplots(ncols=2, dpi = 200, figsize=(10,8/3))

@@ -24,6 +24,48 @@ def get_better_k_square(region_res, centre =(1/2,1/2), scale=1):
     return k, full_BZ_res
 
 
+def dist(x,y, c = (0,0), oblique=.8):
+    return np.sqrt((x- c[0])**2 + (y-c[1])**2 +oblique*(x- c[0]) * (y-c[1]))
+
+
+def get_close_k_points(full_bz_res, centre = (1/3,1/3), width = .2, thresholds=(1,1.1), strength=5.5):
+
+    box_size = int(full_bz_res * width)
+
+    threshold_L = thresholds[0]
+    threshold_U = thresholds[1]
+
+
+    kx_ = np.linspace(centre[0] - width/2, centre[0] + width/2, box_size)
+    ky_ = np.linspace(centre[1] - width/2, centre[1] + width/2, box_size)
+    kx,ky = np.meshgrid(kx_,ky_)
+
+
+
+    potential = 1 / (strength * dist(kx,ky,centre) + 1) #+ 1 / (strength * dist(kx,ky,(2/3,2/3))+1)
+
+    z = np.where(np.logical_and(potential > threshold_L,potential < threshold_U) , 1,0)
+
+    kx *= 2 * np.pi
+    ky *= 2 * np.pi
+
+
+    num_sig_kpoints = kx[np.logical_and(potential > threshold_L,potential < threshold_U)].shape[0]
+
+    print("{} kpoints chosen out of {} across BZ. BZ yield of {:.2g}% ".format(
+        num_sig_kpoints,full_bz_res**2, 100 * num_sig_kpoints/(full_bz_res**2)))
+
+    print("{} kpoints chosen out of {} across cropped area. cropped yield of {:.2g}% ".format(
+        num_sig_kpoints,box_size**2, 100 * num_sig_kpoints/(box_size**2)))
+
+
+    sig_kx = kx[np.logical_and(potential > threshold_L,potential < threshold_U)]
+    sig_ky = ky[np.logical_and(potential > threshold_L,potential < threshold_U)]
+    sig_z = z[np.logical_and(potential > threshold_L,potential < threshold_U)]
+
+
+    return np.vstack((sig_kx,sig_ky, np.zeros_like(sig_ky)))
+
 
 def get_k_block(res, size_of_box = -1):
 

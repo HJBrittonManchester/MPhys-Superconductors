@@ -13,7 +13,7 @@ def delta(GF,T):
     return GF**5-T
 
 
-def braket(xu, xl, func, tol=1e-5, ms = 100,  debug=True):
+def bracket(xu, xl, func, tol=1e-5, ms = 100,  debug=True):
 
     du = func(xu)
     dl = func(xl)
@@ -103,7 +103,7 @@ def braket(xu, xl, func, tol=1e-5, ms = 100,  debug=True):
 
     return xf
 
-def range_of_brakets(func, xl, xu, y0, y1, ny , debug=True):
+def range_of_brackets(func, xl, xu, y0, y1, ny , debug=True):
 
 
     y_arr = np.linspace(y0, y1, ny)
@@ -112,12 +112,12 @@ def range_of_brakets(func, xl, xu, y0, y1, ny , debug=True):
 
         temp_func = lambda x: func(y,x)
 
-        braket_result = braket(xu, xl, temp_func, debug = False)
+        bracket_result = bracket(xu, xl, temp_func, debug = True)
 
         if debug:
-            print("for y= {}, x= {}".format(y,braket_result))
+            print("for y= {}, x= {}".format(y,bracket_result))
 
-        x_arr[i] = braket_result
+        x_arr[i] = bracket_result
 
     return y_arr, x_arr
 
@@ -126,7 +126,7 @@ def main():
 
     f = lambda H, T: delta( H, T)
 
-    print(range_of_brakets(f, 0,5,0,5,10))
+    print(range_of_brackets(f, 0,5,0,5,10))
 
 
 if __name__ == "__main__":

@@ -73,17 +73,17 @@ def Kubo_susceptibility_unnorm(ham, v_x, v_y, T, n_freq, PLOT=False):
     gf = get_greens_function(ham, matsubara_frequency(T, 0))
 
 
-    mat_mul = np.einsum("ab..., bc..., cd..., de..., ef..., fg..., gh..., ha... -> ...", gf, v_x, gf, v_y, gf, v_x, gf, v_y)
+    mat_mul = np.einsum("abm, bcm, cdm, dem, efm, fgm, ghm, ham -> m", gf, v_x, gf, v_y, gf, v_x, gf, v_y)
 
     for m in range(1,n_freq):
 
         gf = get_greens_function(ham, matsubara_frequency(T, m))
 
-        mat_mul += np.einsum("ab..., bc..., cd..., de..., ef..., fg..., gh..., ha... -> ...", gf,v_x, gf, v_y,gf,v_x, gf, v_y)
+        mat_mul += np.einsum("abm, bcm, cdm, dem, efm, fgm, ghm, ham -> m", gf,v_x, gf, v_y,gf,v_x, gf, v_y)
 
         gf = get_greens_function(ham, matsubara_frequency(T, -m))
 
-        mat_mul += np.einsum("ab..., bc..., cd..., de..., ef..., fg..., gh..., ha... -> ...", gf,v_x, gf, v_y,gf,v_x, gf, v_y)
+        mat_mul += np.einsum("abm, bcm, cdm, dem, efm, fgm, ghm, ham -> m", gf,v_x, gf, v_y,gf,v_x, gf, v_y)
 
     if PLOT:
         return T * mat_mul

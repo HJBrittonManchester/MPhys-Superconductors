@@ -6,22 +6,25 @@ Created on Thu Jan 30 14:22:09 2025
 """
 
 import numpy as np
-import scipy.linalg as LA
 
-def epsilon(hamk):
-    eigs = np.array([LA.eig(hamk[:, :, i])[0]
-                    for i in range(hamk.shape[2])])
-    return eigs
+def diagonalise(mat_arr):
+    eigenvalues = np.zeros((mat_arr.shape[0], mat_arr.shape[-1]), dtype=complex)
+    eigenvectors = np.zeros((mat_arr.shape[0],mat_arr.shape[1], mat_arr.shape[-1]), dtype=complex)
+
+    for i in range(mat_arr.shape[-1]):
+        eigvals, eigvecs = np.linalg.eig(mat_arr[:, :, i])
+        eigenvalues[:, i] = eigvals
+        eigenvectors[:, :, i] = eigvecs
+
+    return eigenvalues, eigenvectors
 
 
 
-def get_eig_vec(hamk):
-    return np.array([LA.eig(hamk[:, :, i])[1]
-                     for i in range(hamk.shape[2])], dtype=complex)
+def get_eig_vec(mat_arr):
+    return diagonalise(mat_arr)[1]
 
-def projection_z(hamk, band=0):
-    eigvecs = np.array([LA.eig(hamk[:, :, i])[1]
-                        for i in range(hamk.shape[2])], dtype=complex)
+def projection_z(mat_arr, band=0):
+    eigvecs = get_eig_vec(mat_arr)
 
     proj = eigvecs[:, 0] * eigvecs[:, 0].conj() - \
         eigvecs[:,  1] * eigvecs[:, 1].conj()
@@ -29,9 +32,8 @@ def projection_z(hamk, band=0):
     return proj
 
 
-def projection_x(hamk, band=0):
-    eigvecs = np.array([LA.eig(hamk[:, :, i])[1]
-                        for i in range(hamk.shape[2])], dtype=complex)
+def projection_x(mat_arr, band=0):
+    eigvecs =  get_eig_vec(mat_arr)
 
     proj = eigvecs[:, :, 0] * eigvecs[:, :, 1].conj() + \
         eigvecs[:, :, 1] * eigvecs[:, :, 0].conj()
@@ -39,9 +41,8 @@ def projection_x(hamk, band=0):
     return proj
 
 
-def projection_y(hamk, band=0):
-    eigvecs = np.array([np.linalg.eig(hamk[:, :, i])[1]
-                        for i in range(hamk.shape[2])], dtype=complex)
+def projection_y(mat_arr, band=0):
+    eigvecs = get_eig_vec(mat_arr)
 
     proj = 1j * eigvecs[:, :, 0] * eigvecs[:, :, 1].conj() - \
         eigvecs[:, :, 1] * eigvecs[:, :, 0].conj() * 1j
