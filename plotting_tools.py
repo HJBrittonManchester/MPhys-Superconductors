@@ -74,12 +74,11 @@ def plot_susceptibility(ef=-0.96, H=0., theta=np.pi/2, phi=0., variable_field=Fa
 
     if variable_field:
 
-        n = 1  # number of temperatures
-        m = 10  # number of H fields
+        n = 5  # number of temperatures
+        m = 15  # number of H fields
 
+        T_array = np.linspace(6.5, 5, n)
         H_array = np.linspace(0., 100, m)
-        T_array = [6.3]
-        # T_array = np.linspace(6.5, 5, n)
         susc_array = np.zeros((n, m))
 
         for i in range(n):
@@ -95,7 +94,7 @@ def plot_susceptibility(ef=-0.96, H=0., theta=np.pi/2, phi=0., variable_field=Fa
 
         for i in range(n):
             print("\nT = {}".format(T_array[i]))
-            for j in range(n):
+            for j in range(m):
                 print("[{}, {}],".format(H_array[j], susc_array[i][j]))
 
             ax.plot(H_array, 1 - v*susc_array[i], marker='x',
@@ -107,7 +106,7 @@ def plot_susceptibility(ef=-0.96, H=0., theta=np.pi/2, phi=0., variable_field=Fa
         ax.axhline(ls='--', c='k')
 
         ax.set_xlim(0, 102)
-        plt.legend(loc="upper left", fontsize="8")
+        plt.legend(bbox_to_anchor=(1, 1), fontsize=8)
 
         return susc_array
 
@@ -318,7 +317,7 @@ def plot_phase_diagram(r, plot_fit=False, fit_range=2):
 t_0 = time.time()
 
 s = plot_susceptibility(variable_field=True)
-#np.save("Data/susceptibility_T_45_65.npy", s)
+np.save("Data/susceptibility_T_5_65.npy", s)
 
 t = time.time()
 print("\nruntime: {} seconds".format(t - t_0))
