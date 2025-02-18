@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colors
 from scipy.optimize import curve_fit
+import time
 
 from Main import vary_ham
 from DFT_tools import get_hamr, find_hamk
@@ -24,6 +25,7 @@ DOS_FILE = "Data/DOS_data_300_DFT.npy"
 TC_FILE = "Data/TC_DFT_1000_FINAL.npy"
 
 RESOLUTION = 1000
+NUM_FREQ = 20
 DEFAULT_PATH = ['G', 'M', 'K', 'G']
 
 
@@ -58,6 +60,8 @@ def plot_susceptibility(ef=-0.96, H=0., theta=np.pi/2, phi=0., variable_field=Fa
     vel_x = np.load(VEL_FILES[0])
     vel_y = np.load(VEL_FILES[1])
 
+    v = -2.0798017848698338e-14  # fitted for this system
+
     k_points, res = get_better_k_square(region_res=1000)
     cut_indices = np.where(
         np.sqrt((k_points[0]-2*np.pi/3)**2 + (k_points[1]-2*np.pi/3)**2) < 0.6)[0]
@@ -70,37 +74,56 @@ def plot_susceptibility(ef=-0.96, H=0., theta=np.pi/2, phi=0., variable_field=Fa
 
     if variable_field:
 
-        n = 25
+        n = 1  # number of temperatures
+        m = 10  # number of H fields
 
-        susc_array = np.zeros(n)
-        H_array = np.linspace(0., 150, n)
+        H_array = np.linspace(0., 100, m)
+        T_array = [6.3]
+        # T_array = np.linspace(6.5, 5, n)
+        susc_array = np.zeros((n, m))
 
         for i in range(n):
+            for j in range(m):
 
-            ham_pert = vary_ham(ham, ef=ef, H=H_array[i], theta=theta, phi=phi)
-            ham_pert_cut = ham_pert[:, :, cut_indices]
+                ham_pert = vary_ham(
+                    ham, ef=ef, H=H_array[j], theta=theta, phi=phi)
+                ham_pert_cut = ham_pert[:, :, cut_indices]
 
-            susc_array[i] = Kubo_susceptibility_unnorm(
-                ham_pert_cut, vel_x_cut, vel_y_cut, 6.3, 20, PLOT=False)
-            print("{}".format(i))
+                susc_array[i][j] = Kubo_susceptibility_unnorm(
+                    ham_pert_cut, vel_x_cut, vel_y_cut, T_array[i], NUM_FREQ, PLOT=False)
+                print("index: ({},{})".format(i, j))
 
-        ax.plot(H_array, susc_array, marker='x', markersize=5)
+        for i in range(n):
+            print("\nT = {}".format(T_array[i]))
+            for j in range(n):
+                print("[{}, {}],".format(H_array[j], susc_array[i][j]))
 
-        for j in range(n):
-            print("[[{}, {}],]".format(H_array[j], susc_array[j]))
+            ax.plot(H_array, 1 - v*susc_array[i], marker='x',
+                    markersize=5, label="T = {:.2f} K".format(T_array[i]))
 
-        return None
+        ax.set_xlabel("In-Plane Magnetic Field (T)")
+        ax.set_ylabel(r"$\Delta = 1 - V \chi$")
+
+        ax.axhline(ls='--', c='k')
+
+        ax.set_xlim(0, 102)
+        plt.legend(loc="upper left", fontsize="8")
+
+        return susc_array
 
     ham_pert = vary_ham(ham, ef=ef, H=H, theta=theta, phi=phi)
     ham_pert_cut = ham_pert[:, :, cut_indices]
 
     susc_array = Kubo_susceptibility_unnorm(
-        ham_pert_cut, vel_x_cut, vel_y_cut, 6.3, 20, PLOT=True)
+        ham_pert_cut, vel_x_cut, vel_y_cut, 6., NUM_FREQ, PLOT=True)
 
     k_points_cut = k_points[:, cut_indices]
     cax = ax.scatter(k_points_cut[0], k_points_cut[1],
                      c=np.real(susc_array), cmap='bwr', norm=colors.CenteredNorm(0))
-    fig.colorbar(cax, ax=ax)
+    fig.colorbar(cax, ax=ax, label="Susceptibility")
+
+    ax.set_xlabel("kx")
+    ax.set_ylabel("ky")
 
     return None
 
@@ -290,3 +313,12 @@ def plot_phase_diagram(r, plot_fit=False, fit_range=2):
         return params
 
     return None
+
+
+t_0 = time.time()
+
+s = plot_susceptibility(variable_field=True)
+#np.save("Data/susceptibility_T_45_65.npy", s)
+
+t = time.time()
+print("\nruntime: {} seconds".format(t - t_0))
