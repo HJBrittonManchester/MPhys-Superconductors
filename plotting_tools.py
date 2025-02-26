@@ -314,10 +314,34 @@ def plot_phase_diagram(r, plot_fit=False, fit_range=2):
     return None
 
 
-t_0 = time.time()
 
-s = plot_susceptibility(variable_field=True)
-np.save("Data/susceptibility_T_5_65.npy", s)
+def Plot_nxm_mat(x,y,mat):
 
-t = time.time()
-print("\nruntime: {} seconds".format(t - t_0))
+    n, m , nk = mat.shape()
+
+    fig, axs = plt.subplots(n,m)
+
+    norm = colors.CenteredNorm(0)
+
+
+    for i in [0,1]:
+        for j in [0,1]:
+            c = axs[i,j].scatter(x,y, c=mat[i,j], cmap="bwr", norm=norm)
+            axs[i,j].set_xlim((x.min(), x.max()))
+            axs[i,j].set_ylim((y.min(), y.max()))
+            axs[i,j].set_facecolor("black")
+
+            fig.colorbar(c,ax=axs[i,j])
+
+
+def main():
+    t_0 = time.time()
+
+    s = plot_susceptibility(variable_field=True)
+    np.save("Data/susceptibility_T_5_65.npy", s)
+
+    t = time.time()
+    print("\nruntime: {} seconds".format(t - t_0))
+
+if __name__ == "__main__":
+    main()

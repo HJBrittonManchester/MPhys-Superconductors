@@ -85,40 +85,41 @@ def find_hamk(k, hamr, ndeg, rvec):
 
     return ham
 
-def find_hamk_a(k,hamr, ndeg, rvec, a):
+def find_hamk_a(k,hamr, ndeg, rvec):
 
-    ham = np.zeros((2, 2, k.shape[1]), dtype=np.complex128)
+    ham = np.zeros((2, 2, 3, k.shape[1]), dtype=np.complex128)
     for i in range(k.shape[1]):
         for j in range(hamr.shape[2]):
+            for a in range(3):
 
+                # Compute the phase factor
+                # Ensure the correct sign in the phase
+                phase = np.dot(k[:, i], rvec[:, j])
 
-            # Compute the phase factor
-            # Ensure the correct sign in the phase
-            phase = np.dot(k[:, i], rvec[:, j])
-
-            # Add the contribution to the Hamiltonian in k-space
-            #
-            ham[:, :, i] += 1j*np.dot(rvec[:, j], REAL_VECTORS[:,a]) * hamr[:, :, j] * \
-                complex(np.cos(phase), -np.sin(phase)) / ndeg[j]
+                # Add the contribution to the Hamiltonian in k-space
+                #
+                ham[:, :, a, i] += 1j*np.dot(rvec[:, j], REAL_VECTORS[:,a]) * hamr[:, :, j] * \
+                    complex(np.cos(phase), -np.sin(phase)) / ndeg[j]
 
     return ham
 
-def find_Berry_connection(k, r, ndeg, rvec, a):
-    A = np.zeros((2, 2, k.shape[1]), dtype=np.complex128)
+def find_Berry_connection(k, r, ndeg, rvec):
+    A = np.zeros((2, 2, 3, k.shape[1]), dtype=np.complex128)
     for i in range(k.shape[1]):
         for j in range(rvec.shape[1]):
+            for a in range(3):
 
 
 
-            # Compute the phase factor
-            # Ensure the correct sign in the phase
-            phase = np.dot(k[:, i], rvec[:, j])
+                # Compute the phase factor
+                # Ensure the correct sign in the phase
+                phase = np.dot(k[:, i], rvec[:, j])
 
-            # Add the contribution to the Hamiltonian in k-space
-            A[:, :, i] += (r[0][:, :, j] * REAL_VECTORS[0,a] + \
-                           r[1][:, :, j] * REAL_VECTORS[1,a] + \
-                           r[2][:, :, j] * REAL_VECTORS[2,a] ) * \
-                complex(np.cos(phase), -np.sin(phase)) / ndeg[j]
+                # Add the contribution to the Hamiltonian in k-space
+                A[:, :, a, i] += (r[0][:, :, j] * REAL_VECTORS[0,a] + \
+                               r[1][:, :, j] * REAL_VECTORS[1,a] + \
+                               r[2][:, :, j] * REAL_VECTORS[2,a] ) * \
+                    complex(np.cos(phase), -np.sin(phase)) / ndeg[j]
 
 
     return A
