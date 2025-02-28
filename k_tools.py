@@ -28,7 +28,7 @@ def dist(x,y, c = (0,0), oblique=.8):
     return np.sqrt((x- c[0])**2 + (y-c[1])**2 +oblique*(x- c[0]) * (y-c[1]))
 
 
-def get_close_k_points(full_bz_res, centre = (1/3,1/3), width = .2, thresholds=(1,1.1), strength=5.5):
+def get_close_k_points(full_bz_res, centre = (1/3,1/3), width = .2, thresholds=(.68,.8), strength=5.5, print_stats=False):
 
     box_size = int(full_bz_res * width)
 
@@ -52,11 +52,12 @@ def get_close_k_points(full_bz_res, centre = (1/3,1/3), width = .2, thresholds=(
 
     num_sig_kpoints = kx[np.logical_and(potential > threshold_L,potential < threshold_U)].shape[0]
 
-    print("{} kpoints chosen out of {} across BZ. BZ yield of {:.2g}% ".format(
-        num_sig_kpoints,full_bz_res**2, 100 * num_sig_kpoints/(full_bz_res**2)))
+    if print_stats:
+        print("{} kpoints chosen out of {} across BZ. BZ yield of {:.2g}% ".format(
+            num_sig_kpoints,full_bz_res**2, 100 * num_sig_kpoints/(full_bz_res**2)))
 
-    print("{} kpoints chosen out of {} across cropped area. cropped yield of {:.2g}% ".format(
-        num_sig_kpoints,box_size**2, 100 * num_sig_kpoints/(box_size**2)))
+        print("{} kpoints chosen out of {} across cropped area. cropped yield of {:.2g}% ".format(
+            num_sig_kpoints,box_size**2, 100 * num_sig_kpoints/(box_size**2)))
 
 
     sig_kx = kx[np.logical_and(potential > threshold_L,potential < threshold_U)]
