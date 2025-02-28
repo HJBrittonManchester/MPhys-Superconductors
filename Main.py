@@ -97,17 +97,6 @@ class profiler():
 #############################################################
 # hamiltonian related functions
 
-def get_toy_ham(b):
-
-    kx = (b[0] + 2 * b[1]) / (a * np.sqrt(3))
-    ky = b[0] / a
-
-    H = np.zeros((2, 2, len(kx)), dtype=complex)
-
-    for i in range(len(kx)):
-        H[:, :, i] = H_0(kx[i], ky[i])
-
-    return H
 
 
 def get_bands_on_path(path=DEFAULT_PATH):
@@ -181,12 +170,6 @@ def delta(T,  v,   hamk_P, hamk_N, fermi_energy = FERMI_ENERGY, H=0, phi=PHI_DEF
     return 1 - v * np.real_if_close(susc(hamk_pert_N, hamk_pert_P, T, NUM_FREQ).sum() / RESOLUTION**2,)
 
 
-def delta_kubo(T,  v,   hamk_W, v_H, U, fermi_energy = FERMI_ENERGY, H=0, phi=PHI_DEFAULT, theta=THETA_DEFAULT):
-
-    hamk_W_pert = vary_ham(hamk_W, fermi_energy, H, theta=theta, phi=phi)
-
-    return 1- v*Kubo_susceptibility_unnorm(hamk_W_pert, v_H, U, T, NUM_FREQ).real / RESOLUTION**2
-
 
 def find_v(useToy=False):
     hamk_P = np.load("Data/DFT_H0_300_P.npy")
@@ -237,108 +220,7 @@ def find_v(useToy=False):
 
     return hamk_P, hamk_N, v
 
-def plot_projections(path = DEFAULT_PATH, res =RESOLUTION):
-    hamr_obs = get_hamr()
-    k = get_k_path(path, res)
-    hamk = find_hamk(k, *hamr_obs)
-    hamk = vary_ham(hamk, H=0, theta=0)
 
-    p_z = np.real(projection_z(hamk))
-    p_x = np.real(projection_x(hamk))
-    p_y = np.real(projection_y(hamk))
-
-    # total_proj = p_z**2 + p_x**2 + p_y**2
-
-    print((p_z).mean(axis=0))
-
-    # e_dft, e_t = get_bands_on_path()
-    e_dft = diagonalise(hamk)[0]
-
-    xk = get_k_path_spacing(k)
-
-    fig, axs = plt.subplots(3, figsize=(10, 15), dpi=100, sharex=True)
-
-    norm = colors.Normalize(-1, 1)
-    projs = [p_x, p_y, p_z]
-    titles = ['x', 'y', 'z']
-
-    for j in range(len(axs)):
-
-        for i in range(len(e_dft[0])):
-
-            axs[j].scatter(xk, e_dft[:, i], c=projs[j][:, i],
-                                     cmap='bwr', norm=norm, linewidths=1)
-            axs[j].set_title(titles[j])
-            # plt.plot(xk, e_t)
-            # plt.hlines(0, 0, 1)
-            # plt.hlines(0.022, 0, 1)
-            # plt.hlines(-0.022, 0, 1)
-
-            # Add colorbar to indicate the values of z
-
-            # plt.xlabel("Distance along k-path")
-            # plt.ylabel("Energy / eV")
-
-            # plt.title("Energy bands for No field ")
-    # plt.xlim(0.3, .4)
-    #plt.colorbar(scatter, label='y value')
-    print(e_dft.min())
-
-
-def get_DOS(ham, energy_range = (-0.15,1.5), energy_steps = 165, save_data=False):
-
-    density_of_state_array = []
-
-
-    energies = np.linspace(energy_range[0], energy_range[1], energy_steps)
-    energy_spacing = (energies[1]-energies[0])
-    for e in energies:
-        temp_dos = DOS(e, ham, sigma = 1e-2)
-
-        print("energy: \t {:.3e}, \t DOS: \t {:.3e}".format(e,temp_dos))
-
-        density_of_state_array.append(temp_dos)
-
-    density_of_state_array = np.array(density_of_state_array)
-    carrier_density = np.cumsum(density_of_state_array * energy_spacing)
-
-    if save_data:
-        temp_data = np.dstack((energies, density_of_state_array, carrier_density))[0]
-
-        np.save("Data/DOS_data_{}_{}".format(RESOLUTION, "DFT" if FERMI_ENERGY == -0.96 else "TOY"), temp_data)
-
-    return energies, density_of_state_array, carrier_density
-
-def velocity_path():
-    #hamk_P, hamk_N, v = find_v(useToy=False)
-
-    hamr, ndeg, rvec, nb, nr = get_hamr(DFT_HAM_FILE_NAME)  # Read in the real-space hamiltonian
-
-    hamk_x = find_hamk_a(get_k_path(DEFAULT_PATH, RESOLUTION), hamr, ndeg, rvec, 0)  # FT the velocity x
-    hamk_y = find_hamk_a(get_k_path(DEFAULT_PATH, RESOLUTION), hamr, ndeg, rvec, 1)  # FT the velocity y
-
-    hamk = find_hamk(get_k_path(DEFAULT_PATH, RESOLUTION), hamr, ndeg, rvec)  # FT the hamiltonian
-
-    # Find the energy eigen values
-    e = diagonalise(hamk)[0]
-
-    #find velocity eigen values
-    vx = diagonalise(hamk_x)[0]
-    vy = diagonalise(hamk_y)[0]
-
-    fig, ax = plt.subplots(1, dpi = 200)
-
-    ax.plot(e[:,0], '--b', label=r"$E_1(k) $")
-    ax.plot(vy[:,0], 'b', label=r"$v_{y1}(k)$")
-    ax.plot(e[:,1], '--r', label=r"$E_2(k) $")
-    ax.plot(vy[:,1], 'r', label=r"$v_{y2}(k)$")
-    ax.legend()
-
-    ax.set_xticks([RESOLUTION * i for i in range(len(DEFAULT_PATH))], DEFAULT_PATH)
-    ax.set_xlim(0, (len(DEFAULT_PATH) -1) *RESOLUTION )
-    ax.hlines(0,color="k", linestyle="--", xmin=0, xmax=(len(DEFAULT_PATH) -1) *RESOLUTION)
-
-    plt.show()
 
 
 def calculate_full_bz_variables(resolution = RESOLUTION, save = True):
@@ -448,113 +330,7 @@ def main():
 
     prof = profiler(True)
 
-    hamk_W, v_H, U, hamk_W_n = calculate_full_bz_variables(RESOLUTION,True)
 
-
-    prof.Next("Generate data")
-
-    #find_sig_points()
-    #prof.Next("Found sig and saved")
-
-    hamk_W, v_H, U, hamk_W_n = load_data("Data", "{}".format(RESOLUTION))
-
-    prof.Next("Loading files")
-
-
-
-
-    hamk_W_pert = vary_ham(hamk_W)
-    hamk_W_n_pert = vary_ham(hamk_W_n)
-
-
-
-
-    chi = test_susc(hamk_W_pert, hamk_W_n_pert, 6.5, NUM_FREQ) / (RESOLUTION**2)
-    #Kubo_susceptibility_unnorm(hamk_W_pert, v_H, U, 6.5, NUM_FREQ) / (RESOLUTION**2)
-
-    v =  1/np.real(chi)
-    print(v)
-    print(1- v * np.real(chi))
-
-    prof.Next("Finding V")
-
-
-    x_range = np.linspace(0.,6.5, 2)
-    y_range = np.linspace(8, 11, 1)
-    X, Y = np.meshgrid(x_range, y_range)
-    Y += 0# np.sqrt(1-X/ 6.5) * 125
-
-    X = X.flatten()
-    Y = Y.flatten()
-    d = np.zeros_like(X)
-
-    if THREADING:
-
-        threads = []
-
-        def d_func(i):
-            hp = vary_ham(hamk_W, H=Y[i])
-            hn = vary_ham(hamk_W_n, H=Y[i])
-
-            d[i] =  1 - v * test_susc(hp, hn, X[i], NUM_FREQ).real /(RESOLUTION**2)
-            #delta_kubo(X[i], v, hamk_W, v_H, U, H=Y[i])
-
-            return None
-
-        for i in range(len(X)):
-            t = threading.Thread(target=d_func, args=(i,))
-            t.start()
-            threads.append(t)
-            #print(i)
-
-        print("all threads started")
-
-
-
-        for i in range(len(threads)):
-            threads[i].join()
-    else:
-        for i in range(len(X)):
-            d[i] = delta_kubo(X[i], v, hamk_W, v_H, U, H=Y[i])
-
-
-    prof.Next("bracketing")
-
-
-    # #X, Y, d = np.load("Temp/tempFieldRes.npy")
-
-    print(X.tolist())
-    print()
-    print(Y.tolist())
-    print()
-    print(d.tolist())
-
-    # res = np.vstack((X,Y,d))
-    # np.save("Temp/tempFieldRes", res)
-
-
-    fig, ax = plt.subplots(dpi = 400)
-
-    clipping= 1e-10
-    #c = ax.scatter(X,Y,c=(X**2 *d), cmap="bwr",     norm = colors.TwoSlopeNorm(vcenter=0, vmin=-clipping, vmax=clipping))
-    for t in np.unique(Y):
-        hfield = X[np.where(Y==t)]
-        delta = d[np.where(Y==t)]
-        ax.plot(hfield, delta, label=str(t) + "T")
-
-    #ax.set_facecolor("black")
-    ax.legend()
-    ax.set_title("Z-directed external field")
-    #fig.colorbar(c, ax=ax)
-    #ax.set_xlabel("T / Kelvin")
-    ax.set_xlabel("T / K")
-    ax.set_ylabel(r"$\Delta$")
-    ax.hlines(0,X.min(), X.max(), color="black", linestyle="dashed")
-    ax.set_xlim((X.min(), X.max()))
-    #ax.set_ylim((-.01, .01))
-
-
-    prof.Next("Plotting")
 
 
     prof.Summary()
