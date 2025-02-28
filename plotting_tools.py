@@ -11,16 +11,20 @@ from matplotlib import colors
 from scipy.optimize import curve_fit
 import time
 
-from Main import vary_ham
+from Main import vary_ham, find_v, delta
 from DFT_tools import get_hamr, find_hamk
-from GF_tools import Kubo_susceptibility_unnorm
-from eig_tools import epsilon
-from k_tools import get_k_path, get_k_path_spacing, get_k_block, get_better_k_square
+from GF_tools import Kubo_susceptibility_unnorm, susc
+from eig_tools import diagonalise
+from k_tools import get_k_path, get_k_path_spacing, get_k_block, get_better_k_square, get_close_k_points
 from eig_tools import projection_x, projection_y, projection_z
 
-DFT_FILES = ["Data/MoS2_hr.dat", "Data/DFT_H0_300_P.npy",
-             "Data/DFT_H0_300_N.npy", "Data/hamk_1000.npy"]
+# DFT_FILES = ["Data/MoS2_hr.dat", "Data/DFT_H0_300_P.npy",
+#            "Data/DFT_H0_300_N.npy", "Data/hamk_1000.npy"]
 VEL_FILES = ["Data/velocity_x_1000.npy", "Data/velocity_y_1000.npy"]
+DFT_FILES = ["Data/MoS2_hr.dat", "Data/DFT_H0_300_P.npy",
+             "Data/DFT_H0_300_N.npy", "Data/ham_h_2k_1000.npy", "Data/hamk_1000.npy"]
+#VEL_FILES = ["Data/vx_2k_1000.npy", "Data/vy_2k_1000.npy"]
+CUT_FILES = ["temp/ham_h_9689.npy", "temp/vx_9689.npy", "temp/vy_9689.npy"]
 DOS_FILE = "Data/DOS_data_300_DFT.npy"
 TC_FILE = "Data/TC_DFT_1000_FINAL.npy"
 
@@ -34,17 +38,20 @@ def plot_bands_on_path(path=DEFAULT_PATH, ef=-0.96, H=0., theta=np.pi/2, phi=0.)
     k_points = get_k_path(path, RESOLUTION)
     x = get_k_path_spacing(k_points)
 
-    hamr, ndeg, rvec = get_hamr(DFT_FILES[0])
-    hamk = find_hamk(k_points, hamr, ndeg,
-                     rvec)
+    #hamr, ndeg, rvec = get_hamr(np.load(DFT_FILES[0]))
+    # hamk = find_hamk(k_points, hamr, ndeg,
+    #                rvec)
+
+    hamk = np.load(DFT_FILES[4])
 
     hamk_pert = vary_ham(hamk, ef=ef, H=H, theta=theta, phi=phi)
-    energies = epsilon(hamk_pert)
+    energies = diagonalise(hamk_pert)[0]
+    print(energies.shape)
 
     fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
 
-    ax.plot(x, energies[:, 1], 'midnightblue')
-    ax.plot(x, energies[:, 0], 'r')
+    ax.plot(x, energies[1, :], 'midnightblue')
+    ax.plot(x, energies[0, :], 'r')
 
     ax.set_ylabel("Energy (eV)")
     ax.set_xlabel("Path in Brillouin Zone")
@@ -55,74 +62,88 @@ def plot_bands_on_path(path=DEFAULT_PATH, ef=-0.96, H=0., theta=np.pi/2, phi=0.)
     return None
 
 
-def plot_susceptibility(ef=-0.96, H=0., theta=np.pi/2, phi=0., variable_field=False):
+def vary_susceptibility(n, m, H_U, H_L, T_U, T_L, ef=0., H=0., theta=np.pi/2, phi=0.):
+    # n = number of temperatures
+    # m = number of H fields
+    n = int(n)
+    m = int(m)
+
+    # these files are already corrected for fermi energy
+    ham = np.load(CUT_FILES[0])
+    #hamk_p = np.load(DFT_FILES[1])
+    #hamk_n = np.load(DFT_FILES[2])
+    vel_x = np.load(CUT_FILES[1])
+    vel_y = np.load(CUT_FILES[2])
+
+    # chi = Kubo_susceptibility_unnorm(
+    #   ham, vel_x, vel_y, 6.5, NUM_FREQ, PLOT=False) / RESOLUTION**2
+    #v = 1/np.real(chi)
+    v = 3.184727158924242e-08  # num freq = 20
+    # v = 3.175099392550576e-08  # num freq = 500
+    # print(v)
+
+    fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
+
+    T_array = np.linspace(T_U, T_L, int(n))
+    H_array = np.linspace(H_L, H_U, int(m))
+    susc_array = np.zeros((n, m))
+
+    for i in range(n):
+        for j in range(m):
+
+            ham_pert = vary_ham(
+                ham, ef=ef, H=H_array[j], theta=theta, phi=phi)
+
+            susc_array[i][j] = np.real(Kubo_susceptibility_unnorm(
+                ham_pert, vel_x, vel_y, T_array[i], NUM_FREQ, PLOT=False)) / RESOLUTION**2
+            print("index: ({},{})".format(i, j))
+            print("index: ({},{})".format(i, j))
+
+    for i in range(n):
+        print("\nT = {}".format(T_array[i]))
+        for j in range(m):
+            print("[{}, {}],".format(H_array[j], susc_array[i][j]))
+
+        ax.plot(H_array, 1-v*susc_array[i], marker='x',
+                markersize=5, label="T = {:.2f} K".format(T_array[i]))
+
+    ax.set_xlabel("Magnetic Field (T)")
+    ax.set_ylabel(r"$\Delta = 1 - V \chi$")
+
+    ax.axhline(ls='--', c='k')
+
+    #ax.set_xlim(0, 102)
+    plt.legend(bbox_to_anchor=(1, 1), fontsize=8)
+
+    return susc_array
+
+
+def plot_susceptibility(ef=0, H=0., theta=np.pi/2, phi=0.):
     ham = np.load(DFT_FILES[3])
     vel_x = np.load(VEL_FILES[0])
     vel_y = np.load(VEL_FILES[1])
 
-    v = -2.0798017848698338e-14  # fitted for this system
-
-    k_points, res = get_better_k_square(region_res=1000)
-    cut_indices = np.where(
-        np.sqrt((k_points[0]-2*np.pi/3)**2 + (k_points[1]-2*np.pi/3)**2) < 0.6)[0]
-    # print(len(cut_indices))
-
-    vel_x_cut = vel_x[:, :, cut_indices]
-    vel_y_cut = vel_y[:, :, cut_indices]
+    k_points = get_close_k_points(RESOLUTION, thresholds=(0.68, 0.8))
+    k_prime_points = get_close_k_points(RESOLUTION, centre=(2/3, 2/3),
+                                        thresholds=(0.68, 0.8))
+    k = np.hstack((k_points, k_prime_points))
 
     fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
 
-    if variable_field:
-
-        n = 5  # number of temperatures
-        m = 15  # number of H fields
-
-        T_array = np.linspace(6.5, 5, n)
-        H_array = np.linspace(0., 100, m)
-        susc_array = np.zeros((n, m))
-
-        for i in range(n):
-            for j in range(m):
-
-                ham_pert = vary_ham(
-                    ham, ef=ef, H=H_array[j], theta=theta, phi=phi)
-                ham_pert_cut = ham_pert[:, :, cut_indices]
-
-                susc_array[i][j] = Kubo_susceptibility_unnorm(
-                    ham_pert_cut, vel_x_cut, vel_y_cut, T_array[i], NUM_FREQ, PLOT=False)
-                print("index: ({},{})".format(i, j))
-
-        for i in range(n):
-            print("\nT = {}".format(T_array[i]))
-            for j in range(m):
-                print("[{}, {}],".format(H_array[j], susc_array[i][j]))
-
-            ax.plot(H_array, 1 - v*susc_array[i], marker='x',
-                    markersize=5, label="T = {:.2f} K".format(T_array[i]))
-
-        ax.set_xlabel("In-Plane Magnetic Field (T)")
-        ax.set_ylabel(r"$\Delta = 1 - V \chi$")
-
-        ax.axhline(ls='--', c='k')
-
-        ax.set_xlim(0, 102)
-        plt.legend(bbox_to_anchor=(1, 1), fontsize=8)
-
-        return susc_array
-
     ham_pert = vary_ham(ham, ef=ef, H=H, theta=theta, phi=phi)
-    ham_pert_cut = ham_pert[:, :, cut_indices]
 
     susc_array = Kubo_susceptibility_unnorm(
-        ham_pert_cut, vel_x_cut, vel_y_cut, 6., NUM_FREQ, PLOT=True)
+        ham_pert, vel_x, vel_y, 6.3, NUM_FREQ, PLOT=True)
 
-    k_points_cut = k_points[:, cut_indices]
-    cax = ax.scatter(k_points_cut[0], k_points_cut[1],
+    cax = ax.scatter(k[0], k[1],
                      c=np.real(susc_array), cmap='bwr', norm=colors.CenteredNorm(0))
     fig.colorbar(cax, ax=ax, label="Susceptibility")
 
     ax.set_xlabel("kx")
     ax.set_ylabel("ky")
+
+    ax.set_xlim(0, 2*np.pi)
+    ax.set_ylim(0, 2*np.pi)
 
     return None
 
@@ -133,10 +154,13 @@ def plot_energy_spectrum(cutoff=0.022, ef=-0.96, H=0., theta=np.pi/2, phi=0., pl
 
     ham = np.load(DFT_FILES[3])
 
-    k_points = get_k_block(RESOLUTION, size_of_box=-1)
+    vx = np.load(VEL_FILES[0])
 
     ham_pert = vary_ham(ham, ef=ef, H=H, theta=theta, phi=phi)
-    energy = epsilon(ham_pert).mean(axis=1).reshape(RESOLUTION, RESOLUTION)
+    # energy = diagonalise(ham_pert)[0].mean(
+    #   axis=0).reshape((RESOLUTION, RESOLUTION))
+
+    vel = diagonalise(vx)[0][0].reshape((RESOLUTION, RESOLUTION))
 
     fig, ax = plt.subplots(figsize=(7, 6), dpi=400)
 
@@ -145,8 +169,8 @@ def plot_energy_spectrum(cutoff=0.022, ef=-0.96, H=0., theta=np.pi/2, phi=0., pl
 
     fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
 
-    cax = ax.pcolor(alpha, beta, np.real(energy))
-    fig.colorbar(cax, label="Energy (eV)")
+    cax = ax.pcolor(alpha, beta, np.real(vel))
+    fig.colorbar(cax)  # , label="Energy (eV)")
 
     sig_points = np.array([[0, 0, 1/3, 2/3], [0, 1/2, 1/3, 2/3],
                            [r"$\Gamma$", "$M$", "$K$", "$K'$"]])
@@ -158,13 +182,13 @@ def plot_energy_spectrum(cutoff=0.022, ef=-0.96, H=0., theta=np.pi/2, phi=0., pl
             sig_points[1, i]) + 0.01, str(sig_points[2, i]), fontsize=20)
 
     if plot_selected:
-        significant_kpoints_indices = np.where(abs(energy) < cutoff)
+        #significant_kpoints_indices = np.where(abs(energy) < cutoff)
 
         # Find -ve ham to significant k points
-        significant_kpoints = k_points[:, significant_kpoints_indices][:, 0, :]
+        #significant_kpoints = k_points[:, significant_kpoints_indices][:, 0, :]
 
-        ax.contourf(alpha, beta, energy, levels=[
-            -cutoff, cutoff], colors="r", label="Valid K Points")
+        # ax.contourf(alpha, beta, energy, levels=[
+        #   -cutoff, cutoff], colors="r", label="Valid K Points")
 
         plt.legend(loc="upper left")
 
@@ -190,7 +214,7 @@ def plot_projections(path=DEFAULT_PATH):
     p_z = np.real(projection_z(hamk_pert))
     p_x = np.real(projection_x(hamk_pert))
     p_y = np.real(projection_y(hamk_pert))
-    energies = epsilon(hamk_pert)
+    energies = diagonalise(hamk_pert)[0]
 
     # total_proj = p_z**2 + p_x**2 + p_y**2
 
@@ -316,8 +340,10 @@ def plot_phase_diagram(r, plot_fit=False, fit_range=2):
 
 t_0 = time.time()
 
-s = plot_susceptibility(variable_field=True)
-np.save("Data/susceptibility_T_5_65.npy", s)
+#s = vary_susceptibility(n=3, m=25, T_U=2, T_L=1, H_L=0, H_U=50, theta=0.)
+#np.save("Data/susceptibility_T_5_65_oldsuscformula.npy", s)
+
+# plot_energy_spectrum()
 
 t = time.time()
 print("\nruntime: {} seconds".format(t - t_0))
