@@ -26,24 +26,22 @@ ED = 0.022
 Tc = 6.5
 m_xy = scipy.constants.physical_constants["electron mass energy equivalent in MeV"][0] *\
     1e6/c_light**2  # electron mass
-m_z = m_xy / 1  # anisotropy factor
+m_z = m_xy / 100  # anisotropy factor
 
 
 # trying to do 3d integral directly
+def energy(kx, ky, kz, m_xy, m_z):
+    return h_bar**2 * ((kx**2 + ky**2)/m_xy + kz**2/m_z)
+
+
 def K_term_1(m_xy, m_z, T, H, is_x=True):
-    #x_lim = np.sqrt(m_xy*ED)/h_bar
-    #def y_lim(x): return np.sqrt(m_xy*ED/h_bar**2 - x**2)
-    #def z_lim(x, y): return np.sqrt(m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2))
+
     result = tplquad(lambda x, y, z: S1(energy(x, y, z, m_xy, m_z), T, H),
-                     # -np.sqrt(m_xy*ED)/h_bar, np.sqrt(m_xy*ED)/h_bar,
-                     # lambda x: -np.sqrt(m_xy*ED/h_bar**2 - x**2),
-                     # lambda x: np.sqrt(m_xy*ED/h_bar**2 - x**2),
-                     # lambda x, y: -np.sqrt(m_z*ED/h_bar **
-                     #                       2 - m_z/m_xy * (x**2 + y**2)),
-                     # lambda x, y: np.sqrt(m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2)))
                      0.001, np.sqrt(m_xy*ED)/h_bar,
                      0.001, lambda x: np.sqrt(m_xy*ED/h_bar**2 - x**2),
-                     0.001, lambda x, y: np.sqrt(m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2)))
+                     0.001, lambda x, y: np.sqrt(
+                         m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2)),
+                     epsrel=1e-1)
     if is_x:
         return 1/4 * 2*h_bar**2/m_xy * 8*result[0]  # even function in 3D space
     else:
@@ -51,9 +49,6 @@ def K_term_1(m_xy, m_z, T, H, is_x=True):
 
 
 def K_term_2(m_xy, m_z, T, H, is_x=True):
-    #x_lim = np.sqrt(m_xy*ED)/h_bar
-    #def y_lim(x): return np.sqrt(m_xy*ED/h_bar**2 - x**2)
-    #def z_lim(x, y): return np.sqrt(m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2))
     if is_x:
         result = tplquad(lambda x, y, z: x**2 * S2(energy(x, y, z, m_xy, m_z), T, H),
                          # -np.sqrt(m_xy*ED)/h_bar, np.sqrt(m_xy*ED)/h_bar,
@@ -64,7 +59,9 @@ def K_term_2(m_xy, m_z, T, H, is_x=True):
                          # lambda x, y: np.sqrt(m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2)))
                          0.001, np.sqrt(m_xy*ED)/h_bar,
                          0.001, lambda x: np.sqrt(m_xy*ED/h_bar**2 - x**2),
-                         0.001, lambda x, y: np.sqrt(m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2)))
+                         0.001, lambda x, y: np.sqrt(
+                             m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2)),
+                         epsrel=1e-1)
 
         return 1/4 * 4*h_bar**4/m_xy**2 * 8*result[0]
 
@@ -78,7 +75,9 @@ def K_term_2(m_xy, m_z, T, H, is_x=True):
                          # lambda x, y: np.sqrt(m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2)))
                          0.001, np.sqrt(m_xy*ED)/h_bar,
                          0.001, lambda x: np.sqrt(m_xy*ED/h_bar**2 - x**2),
-                         0.001, lambda x, y: np.sqrt(m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2)))
+                         0.001, lambda x, y: np.sqrt(
+                             m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2)),
+                         epsrel=1e-1)
 
         return 1/4 * 4*h_bar**4/m_z**2 * 8*result[0]
 
@@ -92,17 +91,13 @@ def susc_2_direct(m_xy, m_z, T, H):
     return -2*e_charge*H/(h_bar*c_light) * np.sqrt(K1*K2)
 
 
+"""
 # general energy integral for even functions
 def integral(func, T, H, limit=0.01, is_even=True):
     if is_even:
         return 2*quad(func, 0.001, limit, args=(T, H))[0]
     else:
         return quad(func, 0.001, limit, args=(T, H))[0]
-
-
-# energy dispersion
-def energy(kx, ky, kz, m_xy, m_z):
-    return h_bar**2 * ((kx**2 + ky**2)/m_xy + kz**2/m_z)
 
 
 # isotropic susceptibility functions
@@ -118,18 +113,22 @@ def susc_0_enh(T, H):
     integral_vec = np.vectorize(integral)
     return bcs_term + integral_vec(susc_0_H_term, T, H)
 
-
+"""
 # anisotropic functions
 
 
 def S1(e, T, H):
     e_red = e / (2*kB*T)
-    return 1/(8*kB*T*e**2) * (e / np.cosh(np.longdouble(e_red)) / np.cosh(np.longdouble(e_red)) - 2*kB*T*np.tanh(e_red))
+    if e_red < 700:
+        return 1/(8*kB*T*e**2) * (e / np.cosh(e_red) / np.cosh(e_red) - 2*kB*T*np.tanh(e_red))
+    return -1/(4*e**2)  # large cosh, tanh limits
 
 
 def S2(e, T, H):
     e_red = e / (2*kB*T)
-    return -1/(4*e*(kB*T)**2) * np.tanh(e_red) / np.cosh(np.longdouble(e_red)) / np.cosh(np.longdouble(e_red))
+    if e_red < 700:
+        return -1/(4*e*(kB*T)**2) * np.tanh(e_red) / np.cosh(e_red) / np.cosh(e_red)
+    return 0
 
 
 def susc_0_sqrt(T, H):
@@ -138,6 +137,7 @@ def susc_0_sqrt(T, H):
     return 1/4 * result[0]  # even function so *2 from 0->ED
 
 
+"""
 def susc_2_1(T, H):
     # mass term (mass anisotropy terms added in K1, K2 functions)
     result = quad(lambda r: 1/(np.cosh(r**2/(2*kB*T)))**2 - 2*kB*T/r**2 * np.tanh(r**2/(2*kB*T)),
@@ -168,6 +168,8 @@ def susc_2(m_xy, m_z, T, H):
     # this minus sign shouldnt be here but it makes it work
    # return 2*e_charge/(h_bar*c_light) * K_array[0] * H
 
+"""
+
 
 def delta(N0V, susc_func):
     # general delta function for plotting
@@ -177,17 +179,17 @@ def delta(N0V, susc_func):
 def plot(single_plot=True, plot_fit=True):
     global N0V_fitted
     # phase space
-    x = np.linspace(3.5, 7., 25)
-    y = np.linspace(0., 15., 25)
+    x = np.linspace(3.5, 7., 3)
+    y = np.linspace(0., 15., 3)
     X, Y = np.meshgrid(x, y)
     susc_0_sqrt_vec = np.vectorize(susc_0_sqrt)
 
     if single_plot:
-        z = delta(N0V_fitted, susc_0_sqrt_vec(
-            X, Y))
-        print(z)
+        data = np.zeros((len(X), len(Y)))
+        data[:, :] = delta(N0V_fitted, susc_0_sqrt_vec(
+            X, Y) + susc_2_direct(m_xy, m_z, X, Y))
         fig, ax = plt.subplots(figsize=(6, 5), dpi=400)
-        cax = ax.scatter(X, Y, c=z, cmap='bwr',
+        cax = ax.scatter(X, Y, c=data[:, :], cmap='bwr',
                          s=30, vmin=-0.05, vmax=0.05)
         fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
 
@@ -230,10 +232,36 @@ def gl_model_2D(T, a, is_2D):
 
 
 time_0 = time.time()
+"""
 N0V_fitted = 1/(susc_0_sqrt(6.5, 0.))  # + susc_2_direct(m_xy, m_z, 6.5, 0.))
 
 data = plot()
-np.save("phase_diagram_analytical.npy", data)
+print(data)
+
+# #np.save("phase_diagram_analytical.npy", data)
+"""
+d = np.load("phase_diagram_analytical.npy")
+print(d.shape)
+
+m_array = [0.01, 0.1, 1]
+x = np.linspace(3.5, 7., 25)
+y = np.linspace(0., 15., 25)
+X, Y = np.meshgrid(x, y)
+
+fig, axs = plt.subplots(1, len(m_array), figsize=(6*len(m_array), 5), dpi=600)
+for i in range(len(m_array)):
+    cax = axs[i].scatter(X, Y, c=d[:, :, i], cmap='bwr',
+                         s=100, vmin=-0.02, vmax=0.02, marker='o')
+    axs[i].set_xlabel(r'$T$ (K)')
+    axs[0].set_ylabel(r'$\mu_0 H_{c2}$ (T)')
+    axs[i].set_xlim(x[0], x[-1])
+    axs[i].set_ylim(y[0], y[-1])
+    axs[i].set_title(
+        r"$m_\perp / m_\parallel = {}$".format(m_array[i]))
+    # axs[i].annotate(r"$m_\perp / m_\parallel = {}$".format(m_array[i]), xy=(3.575, 12.75), xycoords='data',
+    #               size=9, ha='left', va='top', bbox=dict(boxstyle='round', fc='w'))
+fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
+
 print("time taken: {:.2f} s".format(time.time() - time_0))
 
 # data = delta(N0V_fitted, susc_0_sqrt_vec(X, Y) + susc_2(m_xy, m_z, X, Y))
