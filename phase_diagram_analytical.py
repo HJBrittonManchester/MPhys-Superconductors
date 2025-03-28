@@ -5,12 +5,16 @@ Created on Wed Mar 19 12:53:25 2025
 @author: zumai
 """
 
+# repeat over a smaller range eg 5 -> 7 K
+# look at more ratios, maybe to make a log plot of ratio against critical exponent.
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colors
 import scipy.constants
 from scipy.integrate import quad, tplquad
 from scipy.special import digamma
+from scipy.optimize import curve_fit
 import time
 
 
@@ -20,8 +24,7 @@ h_bar = scipy.constants.physical_constants["Planck constant in eV/Hz"][0]
 c_light = scipy.constants.speed_of_light
 e_charge = scipy.constants.elementary_charge
 
-# changing m_xy (order 1e-2 -> 1) gives dimensional crossover, but m_z dependence cancels
-# out in K1*K2 so that it has no overall impact. weird
+
 ED = 0.022
 Tc = 6.5
 m_xy = scipy.constants.physical_constants["electron mass energy equivalent in MeV"][0] *\
@@ -29,7 +32,6 @@ m_xy = scipy.constants.physical_constants["electron mass energy equivalent in Me
 m_z = m_xy / 100  # anisotropy factor
 
 
-# trying to do 3d integral directly
 def energy(kx, ky, kz, m_xy, m_z):
     return h_bar**2 * ((kx**2 + ky**2)/m_xy + kz**2/m_z)
 
@@ -51,12 +53,6 @@ def K_term_1(m_xy, m_z, T, H, is_x=True):
 def K_term_2(m_xy, m_z, T, H, is_x=True):
     if is_x:
         result = tplquad(lambda x, y, z: x**2 * S2(energy(x, y, z, m_xy, m_z), T, H),
-                         # -np.sqrt(m_xy*ED)/h_bar, np.sqrt(m_xy*ED)/h_bar,
-                         # lambda x: -np.sqrt(m_xy*ED/h_bar**2 - x**2),
-                         # lambda x: np.sqrt(m_xy*ED/h_bar**2 - x**2),
-                         # lambda x, y: -np.sqrt(m_z*ED/h_bar **
-                         #                       2 - m_z/m_xy * (x**2 + y**2)),
-                         # lambda x, y: np.sqrt(m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2)))
                          0.001, np.sqrt(m_xy*ED)/h_bar,
                          0.001, lambda x: np.sqrt(m_xy*ED/h_bar**2 - x**2),
                          0.001, lambda x, y: np.sqrt(
@@ -67,12 +63,6 @@ def K_term_2(m_xy, m_z, T, H, is_x=True):
 
     else:
         result = tplquad(lambda x, y, z: z**2 * S2(energy(x, y, z, m_xy, m_z), T, H),
-                         # -np.sqrt(m_xy*ED)/h_bar, np.sqrt(m_xy*ED)/h_bar,
-                         # lambda x: -np.sqrt(m_xy*ED/h_bar**2 - x**2),
-                         # lambda x: np.sqrt(m_xy*ED/h_bar**2 - x**2),
-                         # lambda x, y: -np.sqrt(m_z*ED/h_bar **
-                         #                       2 - m_z/m_xy * (x**2 + y**2)),
-                         # lambda x, y: np.sqrt(m_z*ED/h_bar**2 - m_z/m_xy * (x**2 + y**2)))
                          0.001, np.sqrt(m_xy*ED)/h_bar,
                          0.001, lambda x: np.sqrt(m_xy*ED/h_bar**2 - x**2),
                          0.001, lambda x, y: np.sqrt(
@@ -176,100 +166,133 @@ def delta(N0V, susc_func):
     return 1/N0V - susc_func
 
 
-def plot(single_plot=True, plot_fit=True):
+def plot_phase_diagram(single_plot=True, d=None, d_masses=None):
     global N0V_fitted
-    # phase space
-    x = np.linspace(3.5, 7., 3)
-    y = np.linspace(0., 15., 3)
+
     X, Y = np.meshgrid(x, y)
     susc_0_sqrt_vec = np.vectorize(susc_0_sqrt)
 
     if single_plot:
-        data = np.zeros((len(X), len(Y)))
-        data[:, :] = delta(N0V_fitted, susc_0_sqrt_vec(
-            X, Y) + susc_2_direct(m_xy, m_z, X, Y))
         fig, ax = plt.subplots(figsize=(6, 5), dpi=400)
-        cax = ax.scatter(X, Y, c=data[:, :], cmap='bwr',
-                         s=30, vmin=-0.05, vmax=0.05)
-        fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
 
+        if d is None:  # work out explicitly
+            data = np.zeros((len(X), len(Y)))
+            data[:, :] = delta(N0V_fitted, susc_0_sqrt_vec(
+                X, Y) + susc_2_direct(m_xy, m_z, X, Y))
+
+            cax = ax.pcolormesh(X, Y, data[:, :], cmap='bwr',
+                                vmin=-0.02, vmax=0.02)
+
+        else:  # input own data with matching dimensions
+            cax = ax.pcolormesh(X, Y, d[:, :], cmap='bwr',
+                                vmin=-0.02, vmax=0.02)
+
+        fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
         ax.set_xlabel(r'$T$ (K)')
         ax.set_ylabel(r'$\mu_0 H_{c2}$ (T)')
-        ax.set_xlim(x[0], x[-1])
+        #ax.set_xlim(x[0], x[-1])
+        ax.set_xlim(6., x[-1])
         ax.set_ylim(y[0], y[-1])
         ax.set_title(r"$m_\perp / m_\parallel = {}$".format(m_z/m_xy))
 
     else:
-        m_array = [1, 0.01]
-        data = np.zeros((len(X), len(Y), len(m_array)))
 
-        fig, axs = plt.subplots(1, len(m_array), figsize=(12, 5), dpi=400)
-        for i in range(len(m_array)):
-            print(i)
-            data[:, :, i] = delta(N0V_fitted, susc_0_sqrt_vec(
-                X, Y) + susc_2_direct(m_xy, m_xy*m_array[i], X, Y))
-            cax = axs[i].scatter(X, Y, c=data[:, :, i], cmap='bwr',
-                                 s=30, vmin=-0.05, vmax=0.05)
-            axs[i].set_xlabel(r'$T$ (K)')
-            axs[0].set_ylabel(r'$\mu_0 H_{c2}$ (T)')
-            axs[i].set_xlim(x[0], x[-1])
-            axs[i].set_ylim(y[0], y[-1])
-            axs[i].set_title(
-                r"$m_\perp / m_\parallel = {}$".format(m_array[i]))
-            # axs[i].annotate(r"$m_\perp / m_\parallel = {}$".format(m_array[i]), xy=(3.575, 12.75), xycoords='data',
-            #               size=9, ha='left', va='top', bbox=dict(boxstyle='round', fc='w'))
-        fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
+        if d is None:  # work out explicitly
+            m_array = [0.01, 0.1, 1]
+            data = np.zeros((len(X), len(Y), len(m_array)))
 
-    return data
+            fig, axs = plt.subplots(
+                1, len(m_array), figsize=(6*len(m_array), 5), dpi=400)
+            for i in range(len(m_array)):
+                print(i)
+                print("current time: {:.2f} s".format(time.time() - time_0))
+                data[:, :, i] = delta(N0V_fitted, susc_0_sqrt_vec(
+                    X, Y) + susc_2_direct(m_xy, m_xy*m_array[i], X, Y))
+
+        else:  # input own data
+
+            fig, axs = plt.subplots(
+                1, len(d_masses), figsize=(6*len(d_masses), 5), dpi=400)
+            for i in range(len(d_masses)):
+                cax = axs[i].pcolormesh(X, Y, d[:, :, i], cmap='bwr',
+                                        vmin=-0.02, vmax=0.02)
+                axs[i].set_xlabel(r'$T$ (K)')
+                axs[0].set_ylabel(r'$\mu_0 H_{c2}$ (T)')
+                axs[i].set_xlim(x[0], x[-1])
+                axs[i].set_ylim(y[0], y[-1])
+                axs[i].set_title(
+                    r"$m_\perp / m_\parallel = {}$".format(d_masses[i]))
+            fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
+
+    return None
 
 
-def gl_model_2D(T, a, is_2D):
+def gl_model(T, a, b):
     global Tc
-    if is_2D:
-        return a*np.sqrt(1-T/Tc)
-    else:
-        return a*(1-T/Tc)
+    return a*(1-T/Tc)**b
+
+
+def plot_data(d, mass_ratio, below_Tc_cutoff=3.5, above_Tc_cutoff=6.5, plot_fit=False):
+
+    # convert into index in format of data. won't work generally
+    m = int(np.log10(100*mass_ratio))
+
+    transition_indices = np.argmin(np.abs(d), axis=0)[:, m]
+    transition_fields = y[transition_indices]
+
+    red_indices = np.where(np.logical_and(
+        x >= below_Tc_cutoff, x <= above_Tc_cutoff))
+    x_red = x[red_indices]
+    transition_fields = transition_fields[red_indices]
+    field_err = np.zeros_like(transition_fields)
+    field_err[:] = abs(y[1] - y[0])/2  # set error to half of pixel width
+
+    fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
+    ax.errorbar(x_red, transition_fields,  field_err, fmt='kx',
+                label='Data')
+
+    ax.set_xlabel(r'$T$ (K)')
+    ax.set_ylabel(r'$\mu_0 H_{c2}$ (T)')
+    ax.set_xlim(below_Tc_cutoff, above_Tc_cutoff)
+    #ax.set_ylim(0, transition_fields.max())
+
+    if plot_fit:
+        params = curve_fit(gl_model, x_red, transition_fields,
+                           sigma=field_err, maxfev=1000)[0]
+        print(
+            r"mass ratio = {}: H_c2(T=0) = {:.2f} T, critical exponent = {:.2f}".format(mass_ratio, *params))
+        ax.plot(x_red, gl_model(x_red, *params),
+                c='r', label="Fit to G-L Model")
+        plt.legend(loc="upper right", fontsize=8)
+        return params
+
+    plt.legend(loc="upper right", fontsize=8)
+    return None
 
 
 time_0 = time.time()
+
+# phase space of data
+x = np.linspace(3.5, 7., 75)
+y = np.linspace(0., 15., 75)
+
+# to work out data
 """
-N0V_fitted = 1/(susc_0_sqrt(6.5, 0.))  # + susc_2_direct(m_xy, m_z, 6.5, 0.))
+# N0V_fitted = 1/(susc_0_sqrt(6.5, 0.))  # + susc_2_direct(m_xy, m_z, 6.5, 0.))
 
-data = plot()
-print(data)
+#data = plot(single_plot=False)
+# print(data)
 
-# #np.save("phase_diagram_analytical.npy", data)
+#np.save("phase_diagram_analytical_highres.npy", data)
 """
-d = np.load("phase_diagram_analytical.npy")
-print(d.shape)
 
-m_array = [0.01, 0.1, 1]
-x = np.linspace(3.5, 7., 25)
-y = np.linspace(0., 15., 25)
-X, Y = np.meshgrid(x, y)
+# to load data
+d = np.load("phase_diagram_analytical_highres.npy")
 
-fig, axs = plt.subplots(1, len(m_array), figsize=(6*len(m_array), 5), dpi=600)
-for i in range(len(m_array)):
-    cax = axs[i].scatter(X, Y, c=d[:, :, i], cmap='bwr',
-                         s=100, vmin=-0.02, vmax=0.02, marker='o')
-    axs[i].set_xlabel(r'$T$ (K)')
-    axs[0].set_ylabel(r'$\mu_0 H_{c2}$ (T)')
-    axs[i].set_xlim(x[0], x[-1])
-    axs[i].set_ylim(y[0], y[-1])
-    axs[i].set_title(
-        r"$m_\perp / m_\parallel = {}$".format(m_array[i]))
-    # axs[i].annotate(r"$m_\perp / m_\parallel = {}$".format(m_array[i]), xy=(3.575, 12.75), xycoords='data',
-    #               size=9, ha='left', va='top', bbox=dict(boxstyle='round', fc='w'))
-fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
+plot_phase_diagram(single_plot=False, d=d, d_masses=[0.01, 0.1, 1])
+for m in [0.01, 0.1, 1]:
+    plot_data(d, m, below_Tc_cutoff=5.5,
+              above_Tc_cutoff=6.5, plot_fit=True)
+
 
 print("time taken: {:.2f} s".format(time.time() - time_0))
-
-# data = delta(N0V_fitted, susc_0_sqrt_vec(X, Y) + susc_2(m_xy, m_z, X, Y))
-# phase_points = np.zeros((len(X), len(Y)))
-# phase_indices = np.zeros(len(X))
-# for i, row in enumerate(data):
-#     phase_indices[i] = int(np.argmin(row))
-
-# print(phase_indices)
-# phase_points = data[phase_indices]
-# plt.scatter(X, Y, c=phase_points)
