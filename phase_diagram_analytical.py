@@ -6,7 +6,6 @@ Created on Wed Mar 19 12:53:25 2025
 """
 
 # repeat over a smaller range eg 5 -> 7 K
-# look at more ratios, maybe to make a log plot of ratio against critical exponent.
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -29,7 +28,7 @@ ED = 0.022
 Tc = 6.5
 m_xy = scipy.constants.physical_constants["electron mass energy equivalent in MeV"][0] *\
     1e6/c_light**2  # electron mass
-m_z = m_xy / 100  # anisotropy factor
+m_z = m_xy / 1000  # anisotropy factor
 
 
 def energy(kx, ky, kz, m_xy, m_z):
@@ -78,7 +77,18 @@ def susc_2_direct(m_xy, m_z, T, H):
     K1 = K_term_1_vec(m_xy, m_z, T, H) + K_term_2_vec(m_xy, m_z, T, H)
     K2 = K_term_1_vec(m_xy, m_z, T, H, is_x=False) + \
         K_term_2_vec(m_xy, m_z, T, H, is_x=False)
-    return -2*e_charge*H/(h_bar*c_light) * np.sqrt(K1*K2)
+    return 2*e_charge*H/(h_bar*c_light) * np.sqrt(K1*K2)
+    # return 2*e_charge*H/(h_bar*c_light) * K1
+
+
+def susc_2_angular(m_xy, m_z, T, H, theta):  # angle in x-z plane from x axis
+    K_term_1_vec = np.vectorize(K_term_1)
+    K_term_2_vec = np.vectorize(K_term_2)
+    K1 = K_term_1_vec(m_xy, m_z, T, H) + K_term_2_vec(m_xy, m_z, T, H)
+    K2 = K_term_1_vec(m_xy, m_z, T, H, is_x=False) + \
+        K_term_2_vec(m_xy, m_z, T, H, is_x=False)
+    return -2*e_charge*H/(h_bar*c_light) * \
+        np.sqrt(K1*K2*np.cos(theta)**2 + (K1*np.sin(theta))**2)
 
 
 """
@@ -98,7 +108,7 @@ def susc_0_H_term(e, T, H):
 
 def susc_0_enh(T, H):
     bcs_term = np.log((2*np.exp(np.euler_gamma)*ED)/(np.pi*kB*T))
-    #digamma_term = digamma(1/2) - digamma(1/2 - 1j*MU_B*H/(kB*T))
+    # digamma_term = digamma(1/2) - digamma(1/2 - 1j*MU_B*H/(kB*T))
     # return bcs_term + 1/2 * np.real(digamma_term)
     integral_vec = np.vectorize(integral)
     return bcs_term + integral_vec(susc_0_H_term, T, H)
@@ -168,6 +178,7 @@ def delta(N0V, susc_func):
 
 def plot_phase_diagram(single_plot=True, d=None, d_masses=None):
     global N0V_fitted
+    theta = 0.05
 
     X, Y = np.meshgrid(x, y)
     susc_0_sqrt_vec = np.vectorize(susc_0_sqrt)
@@ -177,11 +188,15 @@ def plot_phase_diagram(single_plot=True, d=None, d_masses=None):
 
         if d is None:  # work out explicitly
             data = np.zeros((len(X), len(Y)))
+            # data[:, :] = delta(N0V_fitted, susc_0_sqrt_vec(
+            #   X, Y) + susc_2_direct(m_xy, m_z, X, Y))
             data[:, :] = delta(N0V_fitted, susc_0_sqrt_vec(
-                X, Y) + susc_2_direct(m_xy, m_z, X, Y))
+                X, Y) + susc_2_angular(m_xy, m_z, X, Y, theta=theta))
 
-            cax = ax.pcolormesh(X, Y, data[:, :], cmap='bwr',
-                                vmin=-0.02, vmax=0.02)
+            # cax = ax.pcolormesh(X, Y, data[:, :], cmap='bwr',
+            #                   vmin=-0.02, vmax=0.02)
+            cax = ax.scatter(X, Y, c=data[:, :], cmap='bwr',
+                             s=75, vmin=-0.02, vmax=0.02)
 
         else:  # input own data with matching dimensions
             cax = ax.pcolormesh(X, Y, d[:, :], cmap='bwr',
@@ -190,10 +205,10 @@ def plot_phase_diagram(single_plot=True, d=None, d_masses=None):
         fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
         ax.set_xlabel(r'$T$ (K)')
         ax.set_ylabel(r'$\mu_0 H_{c2}$ (T)')
-        #ax.set_xlim(x[0], x[-1])
-        ax.set_xlim(6., x[-1])
+        ax.set_xlim(x[0], x[-1])
         ax.set_ylim(y[0], y[-1])
-        ax.set_title(r"$m_\perp / m_\parallel = {}$".format(m_z/m_xy))
+        ax.set_title(
+            r"$m_\perp / m_\parallel = {}, \theta = {:.2f}$ degrees".format(m_z/m_xy, np.rad2deg(theta)))
 
     else:
 
@@ -254,14 +269,15 @@ def plot_data(d, mass_ratio, below_Tc_cutoff=3.5, above_Tc_cutoff=6.5, plot_fit=
     ax.set_xlabel(r'$T$ (K)')
     ax.set_ylabel(r'$\mu_0 H_{c2}$ (T)')
     ax.set_xlim(below_Tc_cutoff, above_Tc_cutoff)
-    #ax.set_ylim(0, transition_fields.max())
+    # ax.set_ylim(0, transition_fields.max())
 
     if plot_fit:
         params = curve_fit(gl_model, x_red, transition_fields,
-                           sigma=field_err, maxfev=1000)[0]
+                           sigma=field_err, maxfev=1000)
         print(
-            r"mass ratio = {}: H_c2(T=0) = {:.2f} T, critical exponent = {:.2f}".format(mass_ratio, *params))
-        ax.plot(x_red, gl_model(x_red, *params),
+            r"mass ratio = {}: H_c2(T=0) = {:.2f} T, critical exponent = {:.2f} ± {:.2f}".format(
+                mass_ratio, *(params[0]), np.sqrt(np.diag(params[1]))[1]))
+        ax.plot(x_red, gl_model(x_red, *(params[0])),
                 c='r', label="Fit to G-L Model")
         plt.legend(loc="upper right", fontsize=8)
         return params
@@ -272,27 +288,78 @@ def plot_data(d, mass_ratio, below_Tc_cutoff=3.5, above_Tc_cutoff=6.5, plot_fit=
 
 time_0 = time.time()
 
-# phase space of data
-x = np.linspace(3.5, 7., 75)
-y = np.linspace(0., 15., 75)
+N0V_fitted = 1/(susc_0_sqrt(6.5, 0.))
 
-# to work out data
+angles = np.linspace(0, 45, 5)  # in degrees
+H_values = np.linspace(0., 2, 5)
+X, Y = np.meshgrid(angles, H_values)
+
+susc_0_sqrt_vec = np.vectorize(susc_0_sqrt)
+T = 6.4
+
+
+data = np.zeros(len(H_values))
+for i, angle in enumerate(angles):
+    delta_values = delta(N0V_fitted, susc_0_sqrt_vec(T, H_values) +
+                         susc_2_angular(m_xy, m_z, T, H_values, np.deg2rad(angle)))
+    print(delta_values)
+
+    H_index = np.argmin(np.abs(delta_values), axis=0)
+    H = H_values[H_index]
+    print("angle = {:.2f} degrees".format(angle))
+    print("Hc2 = {:.2f} T\n".format(H))
+    data[i] = H
+
+plt.plot(angles, data)
+
+
 """
-# N0V_fitted = 1/(susc_0_sqrt(6.5, 0.))  # + susc_2_direct(m_xy, m_z, 6.5, 0.))
+N0V_fitted = 1/(susc_0_sqrt(6.5, 0.))
 
-#data = plot(single_plot=False)
-# print(data)
+# X, Y = np.meshgrid(x, y)
+susc_0_sqrt_vec = np.vectorize(susc_0_sqrt)
+
+fig, ax = plt.subplots(figsize=(6, 5), dpi=400)
+
+data = np.zeros((len(X), len(Y)))
+data[:, :] = delta(N0V_fitted, susc_0_sqrt_vec(
+    T, Y) + susc_2_angular(m_xy, m_z, T, Y, np.deg2rad(X)))
+
+cax = ax.scatter(X, Y, c=data[:, :], cmap='bwr', s=75,
+                 vmin=-0.02, vmax=0.02)
+
+fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
+ax.set_xlabel(r'$\theta$ (degrees)')
+ax.set_ylabel(r'$\mu_0 H_{c2}$ (T)')
+# ax.set_xlim(x[0], x[-1])
+# ax.set_ylim(y[0], y[-1])
+ax.set_title(r"$m_\perp / m_\parallel = {}$".format(m_z/m_xy))
+"""
+
+"""
+# to work out data
+
+# phase space
+x = np.linspace(5.5, 7., 5)
+y = np.linspace(0., 10., 5)
+
+N0V_fitted = 1/(susc_0_sqrt(6.5, 0.))  # + susc_2_direct(m_xy, m_z, 6.5, 0.))
+
+plot_phase_diagram()
 
 #np.save("phase_diagram_analytical_highres.npy", data)
 """
 
+"""
 # to load data
 d = np.load("phase_diagram_analytical_highres.npy")
 
-plot_phase_diagram(single_plot=False, d=d, d_masses=[0.01, 0.1, 1])
+# plot_phase_diagram(single_plot=True, d=d)
+
+
 for m in [0.01, 0.1, 1]:
-    plot_data(d, m, below_Tc_cutoff=5.5,
+    plot_data(d, m, below_Tc_cutoff=6.2,
               above_Tc_cutoff=6.5, plot_fit=True)
 
-
+"""
 print("time taken: {:.2f} s".format(time.time() - time_0))
