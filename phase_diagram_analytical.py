@@ -28,7 +28,7 @@ ED = 0.022
 Tc = 6.5
 m_xy = scipy.constants.physical_constants["electron mass energy equivalent in MeV"][0] *\
     1e6/c_light**2  # electron mass
-m_z = m_xy / 1000  # anisotropy factor
+m_z = m_xy / 100  # anisotropy factor
 
 
 def energy(kx, ky, kz, m_xy, m_z):
@@ -77,7 +77,7 @@ def susc_2_direct(m_xy, m_z, T, H):
     K1 = K_term_1_vec(m_xy, m_z, T, H) + K_term_2_vec(m_xy, m_z, T, H)
     K2 = K_term_1_vec(m_xy, m_z, T, H, is_x=False) + \
         K_term_2_vec(m_xy, m_z, T, H, is_x=False)
-    return 2*e_charge*H/(h_bar*c_light) * np.sqrt(K1*K2)
+    return -2*e_charge*H/(h_bar*c_light) * np.sqrt(K1*K2)
     # return 2*e_charge*H/(h_bar*c_light) * K1
 
 
@@ -87,6 +87,7 @@ def susc_2_angular(m_xy, m_z, T, H, theta):  # angle in x-z plane from x axis
     K1 = K_term_1_vec(m_xy, m_z, T, H) + K_term_2_vec(m_xy, m_z, T, H)
     K2 = K_term_1_vec(m_xy, m_z, T, H, is_x=False) + \
         K_term_2_vec(m_xy, m_z, T, H, is_x=False)
+    #print(K1, K2)
     return -2*e_charge*H/(h_bar*c_light) * \
         np.sqrt(K1*K2*np.cos(theta)**2 + (K1*np.sin(theta))**2)
 
@@ -178,7 +179,6 @@ def delta(N0V, susc_func):
 
 def plot_phase_diagram(single_plot=True, d=None, d_masses=None):
     global N0V_fitted
-    theta = 0.05
 
     X, Y = np.meshgrid(x, y)
     susc_0_sqrt_vec = np.vectorize(susc_0_sqrt)
@@ -188,15 +188,15 @@ def plot_phase_diagram(single_plot=True, d=None, d_masses=None):
 
         if d is None:  # work out explicitly
             data = np.zeros((len(X), len(Y)))
-            # data[:, :] = delta(N0V_fitted, susc_0_sqrt_vec(
-            #   X, Y) + susc_2_direct(m_xy, m_z, X, Y))
             data[:, :] = delta(N0V_fitted, susc_0_sqrt_vec(
-                X, Y) + susc_2_angular(m_xy, m_z, X, Y, theta=theta))
+                X, Y) + susc_2_direct(m_xy, m_z, X, Y))
 
-            # cax = ax.pcolormesh(X, Y, data[:, :], cmap='bwr',
-            #                   vmin=-0.02, vmax=0.02)
-            cax = ax.scatter(X, Y, c=data[:, :], cmap='bwr',
-                             s=75, vmin=-0.02, vmax=0.02)
+            cax = ax.pcolormesh(X, Y, data[:, :], cmap='bwr',
+                                vmin=-0.02, vmax=0.02)
+            # cax = ax.scatter(X, Y, c=data[:, :], cmap='bwr',
+            #                  s=75, vmin=-0.02, vmax=0.02)
+
+            #np.save("0mass", data)
 
         else:  # input own data with matching dimensions
             cax = ax.pcolormesh(X, Y, d[:, :], cmap='bwr',
@@ -208,36 +208,39 @@ def plot_phase_diagram(single_plot=True, d=None, d_masses=None):
         ax.set_xlim(x[0], x[-1])
         ax.set_ylim(y[0], y[-1])
         ax.set_title(
-            r"$m_\perp / m_\parallel = {}, \theta = {:.2f}$ degrees".format(m_z/m_xy, np.rad2deg(theta)))
+            r"$m_\perp / m_\parallel = {}$".format(m_z/m_xy))
 
     else:
 
         if d is None:  # work out explicitly
-            m_array = [0.01, 0.1, 1]
-            data = np.zeros((len(X), len(Y), len(m_array)))
+            d = np.zeros((len(X), len(Y), len(d_masses)))
 
-            fig, axs = plt.subplots(
-                1, len(m_array), figsize=(6*len(m_array), 5), dpi=400)
-            for i in range(len(m_array)):
-                print(i)
-                print("current time: {:.2f} s".format(time.time() - time_0))
-                data[:, :, i] = delta(N0V_fitted, susc_0_sqrt_vec(
-                    X, Y) + susc_2_direct(m_xy, m_xy*m_array[i], X, Y))
-
-        else:  # input own data
-
-            fig, axs = plt.subplots(
-                1, len(d_masses), figsize=(6*len(d_masses), 5), dpi=400)
+            # fig, axs = plt.subplots(
+            #   1, len(d_masses), figsize=(6*len(d_masses), 5), dpi=400)
             for i in range(len(d_masses)):
-                cax = axs[i].pcolormesh(X, Y, d[:, :, i], cmap='bwr',
-                                        vmin=-0.02, vmax=0.02)
-                axs[i].set_xlabel(r'$T$ (K)')
-                axs[0].set_ylabel(r'$\mu_0 H_{c2}$ (T)')
-                axs[i].set_xlim(x[0], x[-1])
-                axs[i].set_ylim(y[0], y[-1])
-                axs[i].set_title(
-                    r"$m_\perp / m_\parallel = {}$".format(d_masses[i]))
-            fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
+                time_temp = time.time()
+                d[:, :, i] = delta(N0V_fitted, susc_0_sqrt_vec(
+                    X, Y) + susc_2_direct(d_masses[i]*m_xy, m_xy, X, Y))
+                print("{} out of {} done. Time taken: {:.2f} s".format(i+1, len(d_masses),
+                                                                       time.time() - time_temp))
+                np.save("massratios0_002to0_008_new", d)
+
+        # else:  # input own data
+
+        fig, axs = plt.subplots(
+            1, len(d_masses), figsize=(6*len(d_masses), 5), dpi=400)
+        for i in range(len(d_masses)):
+            # cax = axs[i].scatter(X, Y, c=d[:, :, i], cmap='bwr',
+            #                      s=75, vmin=-0.02, vmax=0.02)
+            cax = axs[i].pcolormesh(X, Y, d[:, :, i], cmap='bwr',
+                                    vmin=-0.02, vmax=0.02)
+            axs[i].set_xlabel(r'$T$ (K)')
+            axs[0].set_ylabel(r'$\mu_0 H_{c2}$ (T)')
+            axs[i].set_xlim(x[0], x[-1])
+            axs[i].set_ylim(y[0], y[-1])
+            axs[i].set_title(
+                r"$m_\perp / m_\parallel = {}$".format(d_masses[i]))
+        fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
 
     return None
 
@@ -247,51 +250,80 @@ def gl_model(T, a, b):
     return a*(1-T/Tc)**b
 
 
-def plot_data(d, mass_ratio, below_Tc_cutoff=3.5, above_Tc_cutoff=6.5, plot_fit=False):
+def plot_data(d, mass_ratios, below_Tc_cutoff=3.5, above_Tc_cutoff=6.5, plot_fit=False):
 
-    # convert into index in format of data. won't work generally
-    m = int(np.log10(100*mass_ratio))
+    for i, m in enumerate(mass_ratios):
+        transition_indices = np.argmin(np.abs(d), axis=0)[:, i]
+        transition_fields = y[transition_indices]
 
-    transition_indices = np.argmin(np.abs(d), axis=0)[:, m]
-    transition_fields = y[transition_indices]
+        red_indices = np.where(np.logical_and(
+            x >= below_Tc_cutoff, x <= above_Tc_cutoff))
+        x_red = x[red_indices]
+        transition_fields = transition_fields[red_indices]
+        field_err = np.zeros_like(transition_fields)
+        field_err[:] = abs(y[1] - y[0])/2  # set error to half of pixel width
 
-    red_indices = np.where(np.logical_and(
-        x >= below_Tc_cutoff, x <= above_Tc_cutoff))
-    x_red = x[red_indices]
-    transition_fields = transition_fields[red_indices]
-    field_err = np.zeros_like(transition_fields)
-    field_err[:] = abs(y[1] - y[0])/2  # set error to half of pixel width
+        fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
+        ax.errorbar(x_red, transition_fields,  field_err, fmt='kx',
+                    label='Data')
 
-    fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
-    ax.errorbar(x_red, transition_fields,  field_err, fmt='kx',
-                label='Data')
+        ax.set_xlabel(r'$T$ (K)')
+        ax.set_ylabel(r'$\mu_0 H_{c2}$ (T)')
+        ax.set_xlim(below_Tc_cutoff, above_Tc_cutoff)
+        # ax.set_ylim(0, transition_fields.max())
 
-    ax.set_xlabel(r'$T$ (K)')
-    ax.set_ylabel(r'$\mu_0 H_{c2}$ (T)')
-    ax.set_xlim(below_Tc_cutoff, above_Tc_cutoff)
-    # ax.set_ylim(0, transition_fields.max())
+        if plot_fit:
+            params = curve_fit(gl_model, x_red, transition_fields,
+                               sigma=field_err, maxfev=1000)
+            print(
+                r"mass ratio = {}: H_c2(T=0) = {:.2f} T, critical exponent = {} ± {}".format(
+                    m, *(params[0]), np.sqrt(np.diag(params[1]))[1]))
+            ax.plot(x_red, gl_model(x_red, *(params[0])),
+                    c='r', label="Fit to G-L Model")
+            plt.legend(loc="upper right", fontsize=8)
+            # yield params
 
-    if plot_fit:
-        params = curve_fit(gl_model, x_red, transition_fields,
-                           sigma=field_err, maxfev=1000)
-        print(
-            r"mass ratio = {}: H_c2(T=0) = {:.2f} T, critical exponent = {:.2f} ± {:.2f}".format(
-                mass_ratio, *(params[0]), np.sqrt(np.diag(params[1]))[1]))
-        ax.plot(x_red, gl_model(x_red, *(params[0])),
-                c='r', label="Fit to G-L Model")
         plt.legend(loc="upper right", fontsize=8)
-        return params
-
-    plt.legend(loc="upper right", fontsize=8)
     return None
 
 
 time_0 = time.time()
-
+"""
 N0V_fitted = 1/(susc_0_sqrt(6.5, 0.))
 
-angles = np.linspace(0, 45, 5)  # in degrees
-H_values = np.linspace(0., 2, 5)
+mass_ratios = np.linspace(0.01, 1, 15)  # in degrees
+H_values = np.linspace(0., 3, 15)
+X, Y = np.meshgrid(mass_ratios, H_values)
+
+susc_0_sqrt_vec = np.vectorize(susc_0_sqrt)
+T = 6.4
+
+
+data = np.zeros(len(H_values))
+for i, mass_ratio in enumerate(mass_ratios):
+    delta_values = delta(N0V_fitted, susc_0_sqrt_vec(T, H_values) +
+                         susc_2_direct(mass_ratio*m_xy, m_xy, T, H_values))
+    print(delta_values)
+
+    H_index = np.argmin(np.abs(delta_values), axis=0)
+    H = H_values[H_index]
+    print("mass ratio = {:.2f}".format(mass_ratio))
+    print("Hc2 = {:.5f} T\n".format(H))
+    data[i] = H
+
+
+fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
+ax.plot(mass_ratios, data, 'kx')
+ax.set_xlabel(r'$\theta$ (degrees)')
+ax.set_ylabel(r'$\mu_0 H_{c2}$ ($\theta$)')
+"""
+
+# for angular dependence
+"""
+N0V_fitted = 1/(susc_0_sqrt(6.5, 0.))
+
+angles = np.linspace(0, 10, 15)  # in degrees
+H_values = np.linspace(0., 3, 15)
 X, Y = np.meshgrid(angles, H_values)
 
 susc_0_sqrt_vec = np.vectorize(susc_0_sqrt)
@@ -307,17 +339,25 @@ for i, angle in enumerate(angles):
     H_index = np.argmin(np.abs(delta_values), axis=0)
     H = H_values[H_index]
     print("angle = {:.2f} degrees".format(angle))
-    print("Hc2 = {:.2f} T\n".format(H))
+    print("Hc2 = {:.5f} T\n".format(H))
     data[i] = H
 
-plt.plot(angles, data)
 
+fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
+ax.plot(angles, data, 'kx')
+ax.set_xlabel(r'$\theta$ (degrees)')
+ax.set_ylabel(r'$\mu_0 H_{c2}$ ($\theta$)')
+"""
 
 """
 N0V_fitted = 1/(susc_0_sqrt(6.5, 0.))
 
-# X, Y = np.meshgrid(x, y)
+angles = np.linspace(0, 5, 5)  # in degrees
+H_values = np.linspace(0., 3, 5)
+X, Y = np.meshgrid(angles, H_values)
+
 susc_0_sqrt_vec = np.vectorize(susc_0_sqrt)
+T = 6.4
 
 fig, ax = plt.subplots(figsize=(6, 5), dpi=400)
 
@@ -336,30 +376,119 @@ ax.set_ylabel(r'$\mu_0 H_{c2}$ (T)')
 ax.set_title(r"$m_\perp / m_\parallel = {}$".format(m_z/m_xy))
 """
 
-"""
+
 # to work out data
 
 # phase space
-x = np.linspace(5.5, 7., 5)
-y = np.linspace(0., 10., 5)
+
+x = np.linspace(6.2, 6.5, 50)
+y = np.linspace(0., 6, 50)
 
 N0V_fitted = 1/(susc_0_sqrt(6.5, 0.))  # + susc_2_direct(m_xy, m_z, 6.5, 0.))
 
-plot_phase_diagram()
+m_array = np.array([0.004, 0.006, 0.008, 0.01])
 
-#np.save("phase_diagram_analytical_highres.npy", data)
+#plot_phase_diagram(single_plot=False, d_masses=m_array)
+
+# plot_phase_diagram()
+
+d = np.load("massratios0_002to0_008_new.npy")
+
+plot_data(d, m_array, below_Tc_cutoff=6.2,
+          above_Tc_cutoff=6.5, plot_fit=True)
+
+
+# to load data. match this with the data
 """
+x = np.linspace(6.2, 6.5, 50)
+y = np.linspace(0., 6, 50)
+X, Y = np.meshgrid(x, y)
 
+d = np.load("massratios0_002to1_new.npy")
+m_array = np.array([0.002, 0.05, 1])
+
+below_Tc_cutoff = 6.2
+above_Tc_cutoff = 6.5
+
+fig, axs = plt.subplots(
+    2, len(m_array), figsize=(22, 12), dpi=400)
+# for i in range(len(m_array)):
+#     # cax = axs[i].scatter(X, Y, c=d[:, :, i], cmap='bwr',
+#     #                      s=75, vmin=-0.02, vmax=0.02)
+#     cax = axs[0, i].pcolormesh(X, Y, d[:, :, 2*i], cmap='bwr',
+#                                vmin=-0.01, vmax=0.01)
+#     axs[0, i].set_xlabel(r'$T$ (K)')
+#     axs[0, 0].set_ylabel(r'$\mu_0 H_{c2}$ (T)')
+#     axs[0, i].set_xlim(x[0], x[-1])
+#     axs[0, i].set_ylim(y[0], y[-1])
+#     axs[0, i].set_title(
+#         r"$m_\perp / m_\parallel = {}$".format(m_array[i]))
+# #fig.colorbar(cax, label=r'$\Delta \; (T,H)$')
+
+for i, m in enumerate(m_array):
+
+    cax = axs[0, i].pcolormesh(X, Y, d[:, :, i], cmap='bwr',
+                               vmin=-0.01, vmax=0.01)
+    axs[0, i].set_xlabel(r'$T$ (K)')
+    axs[0, 0].set_ylabel(r'$\mu_0 H_{c2}$ (T)')
+    axs[0, i].set_xlim(x[0], x[-1])
+    axs[0, i].set_ylim(y[0], y[-1])
+    axs[0, i].set_title(
+        r"$\gamma = {}$".format(m_array[i]))
+
+    transition_indices = np.argmin(np.abs(d), axis=0)[:, i]
+    transition_fields = y[transition_indices]
+
+    red_indices = np.where(np.logical_and(
+        x >= below_Tc_cutoff, x <= above_Tc_cutoff))
+    x_red = x[red_indices]
+    transition_fields = transition_fields[red_indices]
+    field_err = np.zeros_like(transition_fields)
+    field_err[:] = abs(y[1] - y[0])/2  # set error to half of pixel width
+
+    #fig, ax = plt.subplots(figsize=(7, 5), dpi=400)
+    axs[1, i].errorbar(x_red, transition_fields,  field_err, fmt='kx',
+                       label='Data')
+
+    axs[1, i].set_xlabel(r'$T$ (K)')
+    axs[1, i].set_ylabel(r'$\mu_0 H_{c2}$ (T)')
+    axs[1, i].set_xlim(below_Tc_cutoff, above_Tc_cutoff)
+    axs[1, i].set_ylim(0, transition_fields.max()+0.1)
+
+    params = curve_fit(gl_model, x_red, transition_fields,
+                       sigma=field_err, maxfev=1000)
+
+    diff = transition_fields - gl_model(x_red, *(params[0]))
+    chi_square = 0
+    for j in range(len(x_red)):
+        chi_square += (diff[j] / field_err[j])**2
+
+    print("\nChi Squared = {}".format(chi_square / len(x_red)))
+
+    print(
+        r"mass ratio = {}: H_c2(T=0) = {:.2f} T, critical exponent = {} ± {}".format(
+            m, *(params[0]), np.sqrt(np.diag(params[1]))[1]))
+    axs[1, i].plot(x_red, gl_model(x_red, *(params[0])),
+                   c='r', label="Fit to G-L Model")
+    axs[1, i].legend(loc="upper right", fontsize=9)
+    # yield params
+
+# plot_phase_diagram(single_plot=False, d=d, d_masses=[
+#     0.002, 0.01, 0.05, 0.2, 1])
+
+# m_array = np.array([0.002*(1+i) for i in range(5)])
+
+# plot_data(d, m_array, below_Tc_cutoff=6.2,
+#           above_Tc_cutoff=6.5, plot_fit=True)
+
+#powers = np.array([0.59, 0.71, 0.87, 0.89, 0.90])
+
+#plt.plot(np.log(m_array), powers, 'kx')
+
+
+# m_array = np.array([0.1*(1+i) for i in range(5)])
+# powers = np.array([0.59, 0.62, 0.66, 0.69, 0.7])
+
+# plt.plot(m_array, powers, 'kx')
 """
-# to load data
-d = np.load("phase_diagram_analytical_highres.npy")
-
-# plot_phase_diagram(single_plot=True, d=d)
-
-
-for m in [0.01, 0.1, 1]:
-    plot_data(d, m, below_Tc_cutoff=6.2,
-              above_Tc_cutoff=6.5, plot_fit=True)
-
-"""
-print("time taken: {:.2f} s".format(time.time() - time_0))
+print("total time taken: {:.2f} s".format(time.time() - time_0))
